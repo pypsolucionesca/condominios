@@ -20,12 +20,12 @@ function useExchangeRate() {
         .maybeSingle()
 
       if (error) throw error
-      setRate(data || { rate_bcv: 36.50, rate_date: new Date().toISOString() })
+      setRate(data || { rate_bcv: 737.23, rate_date: new Date().toISOString() })
       setError(null)
     } catch (err) {
       console.error('Error loading rate:', err)
       setError(err.message || 'Error al cargar tasa')
-      setRate({ rate_bcv: 36.50, rate_date: new Date().toISOString() })
+      setRate({ rate_bcv: 737.23, rate_date: new Date().toISOString() })
     }
     setLoading(false)
   }
@@ -38,7 +38,7 @@ function useExchangeRate() {
 
       const { error } = await supabase.from('exchange_rates').insert([{
         rate_bcv: bcvNum,
-        rate_date: new Date().toISOString()
+        rate_date: new Date().toISOString().split('T')[0]
       }])
       if (error) throw error
       await loadRate()
@@ -59,14 +59,11 @@ const formatearFechaVE = (fechaISO) => {
   if (!fechaISO) return '--/--/----';
   try {
     const d = new Date(fechaISO);
-    return d.toLocaleString('es-VE', {
+    return d.toLocaleDateString('es-VE', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    }).toUpperCase(); 
+      year: 'numeric'
+    });
   } catch (error) {
     return fechaISO;
   }
@@ -86,7 +83,7 @@ function App() {
   const [formDeuda, setFormDeuda] = useState({ propietario_id: '', mes_facturacion: '', monto_cobrado: '' })
   
   const [pagos, setPagos] = useState([])
-  const [formPago, setFormPago] = useState({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', referencia: '', fecha_pago: '' })
+  const [formPago, setFormPago] = useState({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', moneda_pago: 'USD', referencia: '', fecha_pago: '' })
   
   const [gastos, setGastos] = useState([])
   const [formGasto, setFormGasto] = useState({ cuenta_origen_id: '', concepto: '', monto: '', fecha_gasto: '' })
@@ -96,6 +93,7 @@ function App() {
   const [isStandalone, setIsStandalone] = useState(false)
   const [showModalTasa, setShowModalTasa] = useState(false)
   const [tasaInput, setTasaInput] = useState('')
+  const [menuHamburgerOpen, setMenuHamburgerOpen] = useState(false)
 
   useEffect(() => {
     cargarPropietarios(); cargarCuentas(); cargarDeudas(); cargarPagos(); cargarGastos();
@@ -144,30 +142,6 @@ function App() {
   }
   
   const cargarPagos = async () => { const { data } = await supabase.from('pagos_recibidos').select('*').order('created_at', { ascending: false }); if (data) setPagos(data); }
-  const guardarPago = async (e) => {
-    e.preventDefault();
-    if (!formPago.deuda_id || !formPago.cuenta_ingreso_id) return alert('Faltan datos clave.');
-    
-    const cuentaDestino = cuentas.find(c => c.id === formPago.cuenta_ingreso_id); 
-    const montoIngresado = parseFloat(formPago.monto_pagado);
-
-    const { error: errPago } = await supabase.from('pagos_recibidos').insert([{ 
-      deuda_id: formPago.deuda_id, 
-      cuenta_ingreso_id: formPago.cuenta_ingreso_id, 
-      monto_pagado: montoIngresado, 
-      referencia: formPago.referencia, 
-      fecha_pago: formPago.fecha_pago 
-    }]);
-
-    if (errPago) return alert('Error al registrar pago.');
-    
-    await supabase.from('deudas_mensuales').update({ estado: 'Pagada' }).eq('id', formPago.deuda_id);
-    await supabase.from('cuentas').update({ saldo_actual: cuentaDestino.saldo_actual + montoIngresado }).eq('id', formPago.cuenta_ingreso_id);
-    
-    alert('Pago registrado y saldos actualizados con éxito.');
-    setFormPago({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', referencia: '', fecha_pago: '' });
-    cargarPagos(); cargarDeudas(); cargarCuentas();
-  }
   
   const cargarGastos = async () => { const { data } = await supabase.from('gastos_operativos').select('*').order('created_at', { ascending: false }); if (data) setGastos(data); }
   const guardarGasto = async (e) => {
@@ -200,9 +174,6 @@ function App() {
   return (
     <div className="app-container">
       <style>{`
-        /* ========================================================
-           APLASTAR ESTILOS DE VITE QUE ROMPEN LA RESPONSIVIDAD
-           ======================================================== */
         html, body {
           margin: 0 !important;
           padding: 0 !important;
@@ -218,9 +189,6 @@ function App() {
           text-align: left !important;
         }
 
-        /* ========================================================
-           CONTENEDORES PRINCIPALES
-           ======================================================== */
         .app-container { 
           display: flex; 
           flex-direction: row; 
@@ -237,39 +205,31 @@ function App() {
           align-items: center; 
           min-width: 0; 
           box-sizing: border-box;
+          padding-bottom: 90px;
         }
         
         .content-wrapper { 
           width: 100%; 
-          /* ELIMINADO: max-width: 1100px; -> Ahora ocupa el 100% del espacio disponible */
           display: flex; 
           flex-direction: column; 
           min-width: 0;
         }
 
-        /* ========================================================
-           GRID PARA FORMULARIOS (APROVECHAR ESPACIO EN PC)
-           ======================================================== */
         .grid-form {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
           gap: 20px;
           width: 100%;
         }
-        .grid-form .form-group {
-          margin-bottom: 0;
-        }
+        .grid-form .form-group { margin-bottom: 0; }
         .mt-4 { margin-top: 25px; }
 
-        /* ========================================================
-           COMPONENTES INTERNOS
-           ======================================================== */
         .tasa-banner { 
           width: 100%; 
           background: #ffffff; 
           border: 1px solid #e2e8f0; 
           border-radius: 12px; 
-          padding: 15px 20px; 
+          padding: 12px 20px; 
           display: flex; 
           justify-content: space-between; 
           align-items: center; 
@@ -277,11 +237,30 @@ function App() {
           box-shadow: 0 4px 6px rgba(0,0,0,0.02); 
           gap: 15px; 
           box-sizing: border-box;
+          flex-wrap: wrap;
         }
-        .tasa-info { display: flex; gap: 30px; align-items: center; flex-wrap: wrap; }
-        .tasa-item span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; display: block; font-weight: 700; }
-        .tasa-item strong { color: var(--text-main); font-size: 1.1rem; }
-        .btn-tasa { background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; white-space: nowrap; transition: opacity 0.2s; }
+        .tasa-info-line { 
+          display: flex; 
+          align-items: center; 
+          gap: 25px; 
+          flex-wrap: wrap; 
+        }
+        .tasa-item-inline { display: flex; align-items: baseline; gap: 8px; }
+        .tasa-item-inline span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 700; }
+        .tasa-item-inline strong { color: var(--text-main); font-size: 1rem; }
+        
+        .btn-tasa { 
+          background: var(--primary); 
+          color: white; 
+          border: none; 
+          padding: 6px 14px; 
+          border-radius: 6px; 
+          font-size: 0.8rem; 
+          cursor: pointer; 
+          font-weight: 600; 
+          white-space: nowrap; 
+          transition: opacity 0.2s; 
+        }
         .btn-tasa:hover { opacity: 0.9; }
 
         .install-banner { width: 100%; background: var(--primary); color: white; padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 10px; flex-wrap: wrap; box-sizing: border-box; }
@@ -311,29 +290,113 @@ function App() {
         .badge-pendiente { background: #fef08a; color: #854d0e; }
         .badge-pagada { background: #bbf7d0; color: #166534; }
 
-        /* ========================================================
-           MEDIA QUERIES - MODO TELÉFONO ESTRICTO
-           ======================================================== */
+        .mobile-header-top {
+          display: none;
+          width: 100%;
+          background: #0f172a;
+          color: white;
+          padding: 12px 15px;
+          justify-content: space-between;
+          align-items: center;
+          box-sizing: border-box;
+          margin-bottom: 20px;
+          border-radius: 8px;
+        }
+        .hamburger-btn {
+          background: transparent;
+          border: none;
+          color: white;
+          font-size: 1.5rem;
+          cursor: pointer;
+        }
+        .hamburger-dropdown {
+          display: none;
+          position: absolute;
+          top: 60px;
+          right: 15px;
+          background: white;
+          color: #0f172a;
+          border-radius: 8px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+          width: 220px;
+          z-index: 1000;
+          overflow: hidden;
+          border: 1px solid #cbd5e1;
+        }
+        .hamburger-dropdown.open { display: block; }
+        .hamburger-item {
+          padding: 12px 15px;
+          border-bottom: 1px solid #f1f5f9;
+          font-weight: 600;
+          font-size: 0.9rem;
+          cursor: pointer;
+          background: white;
+          border: none;
+          width: 100%;
+          text-align: left;
+        }
+        .hamburger-item:hover { background: #f8fafc; color: var(--primary); }
+
+        .bottom-nav {
+          display: none;
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          background: #ffffff;
+          border-top: 1px solid #cbd5e1;
+          box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+          z-index: 999;
+          justify-content: space-around;
+          padding: 8px 0;
+          box-sizing: border-box;
+        }
+        .bottom-nav-item {
+          background: transparent;
+          border: none;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          color: #64748b;
+          font-size: 0.7rem;
+          font-weight: 600;
+          cursor: pointer;
+          gap: 4px;
+          flex: 1;
+        }
+        .bottom-nav-item.active {
+          color: var(--primary);
+        }
+        .bottom-nav-item span.icon {
+          font-size: 1.2rem;
+        }
+
         @media (max-width: 768px) {
           .app-container { flex-direction: column; }
+          .app-container :global(aside) { display: none !important; } 
+          aside { display: none !important; }
+
           .main-content { 
-            margin-left: 0; 
-            padding: 15px; 
-            width: 100%; 
+            margin-left: 0 !important; 
+            padding: 12px !important; 
+            width: 100% !important; 
           }
-          .card { padding: 20px; }
+          .mobile-header-top { display: flex; }
+          .bottom-nav { display: flex; }
+          
+          .card { padding: 15px; }
           .tasa-banner { 
-            flex-direction: column; 
-            align-items: flex-start; 
-            gap: 15px; 
-          }
-          .tasa-info { 
-            flex-direction: column; 
-            align-items: flex-start; 
+            flex-direction: row; 
+            align-items: center; 
+            justify-content: space-between;
             gap: 10px; 
-            width: 100%; 
+            padding: 10px 12px;
           }
-          .btn-tasa { width: 100%; text-align: center; }
+          .tasa-info-line { gap: 12px; }
+          .tasa-item-inline span { font-size: 0.65rem; }
+          .tasa-item-inline strong { font-size: 0.9rem; }
+          .btn-tasa { padding: 5px 10px; font-size: 0.75rem; }
+          
           .list-item { flex-direction: column; align-items: flex-start; gap: 5px; }
           .list-item > div:last-child { text-align: left !important; width: 100%; }
         }
@@ -344,15 +407,46 @@ function App() {
       <main className="main-content">
         <div className="content-wrapper">
           
-          {/* VISOR DE TASA OFICIAL - FECHA FORMATEADA */}
+         {/* HEADER SUPERIOR MÓVIL CON LOGO Y TÍTULO COMPLETO */}
+          <div className="mobile-header-top" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: '#fff', flexShrink: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerText = '🛡️'; }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 'bold', lineHeight: '1.2' }}>Sistema de Gestión y Finanzas</div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Condominio Vecinal C4 • Juan Pablo II</div>
+            </div>
+            <button className="hamburger-btn" onClick={() => setMenuHamburgerOpen(!menuHamburgerOpen)} style={{ flexShrink: '0' }}>
+              ☰
+            </button>
+
+            <div className={`hamburger-dropdown ${menuHamburgerOpen ? 'open' : ''}`}>
+              <button className="hamburger-item" onClick={() => { setVista('propietarios'); setMenuHamburgerOpen(false); }}>
+                🏢 Locales y Propietarios
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('cuentas'); setMenuHamburgerOpen(false); }}>
+                🏦 Bancos y Cajas
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('facturacion'); setMenuHamburgerOpen(false); }}>
+                📄 Facturación Mensual
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>
+                💵 Recepción de Pagos
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('gastos'); setMenuHamburgerOpen(false); }}>
+                📉 Egresos Operativos
+              </button>
+            </div>
+          </div>
+          
           <div className="tasa-banner">
-            <div className="tasa-info">
-              <div className="tasa-item">
-                <span>Tasa BCV (Dólar)</span>
+            <div className="tasa-info-line">
+              <div className="tasa-item-inline">
+                <span>Tasa BCV:</span>
                 <strong>{rate ? `Bs. ${Number(rate.rate_bcv).toFixed(2)}` : 'Cargando...'}</strong>
               </div>
-              <div className="tasa-item">
-                <span>Fecha Valor</span>
+              <div className="tasa-item-inline">
+                <span>Actualizada:</span>
                 <strong>{rate ? formatearFechaVE(rate.rate_date) : '--/--/----'}</strong>
               </div>
             </div>
@@ -363,7 +457,7 @@ function App() {
             <div className="card" style={{ padding: '20px', marginBottom: '20px', backgroundColor: '#fffbeb' }}>
               <h3 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Ingresar Nueva Tasa BCV Oficial</h3>
               <div className="form-group" style={{ marginTop: '10px' }}>
-                <input type="number" step="0.01" className="form-control" placeholder="Ej: 36.50" value={tasaInput} onChange={(e) => setTasaInput(e.target.value)} />
+                <input type="number" step="0.01" className="form-control" placeholder="Ej: 737.23" value={tasaInput} onChange={(e) => setTasaInput(e.target.value)} />
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button className="btn btn-success" onClick={actualizarTasaManual} style={{ flex: 1, margin: 0 }}>Guardar Tasa</button>
@@ -385,28 +479,68 @@ function App() {
             ) : null
           )}
 
-          {/* VISTA PROPIETARIOS CON GRID CSS */}
           {vista === 'propietarios' && (
             <div className="card">
-              <h2 className="card-header">Registro de Nuevo Local</h2>
+              <h2 className="card-header">Registro de Copropietarios e Inquilinos por Unidad</h2>
               <form onSubmit={guardarPropietario}>
                 <div className="grid-form">
-                  <div className="form-group"><label>Nombre Completo</label><input type="text" className="form-control" name="nombre_completo" value={formPropietario.nombre_completo} onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Cédula o RIF</label><input type="text" className="form-control" name="identificacion" value={formPropietario.identificacion} onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Identificador de Unidad</label><input type="text" className="form-control" name="identificador_unidad" value={formPropietario.identificador_unidad} onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} required /></div>
+                  <div className="form-group">
+                    <label>Identificador de Unidad (Local / Apto)</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      name="identificador_unidad" 
+                      placeholder="Ej: Local 1, Apto 4B"
+                      value={formPropietario.identificador_unidad} 
+                      onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Nombre del Usuario / Propietario</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      name="nombre_completo" 
+                      placeholder="Nombre y apellido"
+                      value={formPropietario.nombre_completo} 
+                      onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Cédula o RIF</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      name="identificacion" 
+                      placeholder="V-12345678"
+                      value={formPropietario.identificacion} 
+                      onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
                 </div>
-                <button type="submit" className="btn btn-primary mt-4">Guardar Propietario</button>
+                <button type="submit" className="btn btn-primary mt-4">Vincular Usuario a la Unidad</button>
               </form>
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Directorio Activo</h3>
+
+              <h3 className="card-header" style={{ marginTop: '40px' }}>Directorio de Unidades y Usuarios Asociados</h3>
               <ul className="list-group">
                 {propietarios.map(prop => (
-                  <li key={prop.id} className="list-item"><div><strong>{prop.nombre_completo}</strong><span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>ID: {prop.identificacion}</span></div><strong>{prop.identificador_unidad}</strong></li>
+                  <li key={prop.id} className="list-item">
+                    <div>
+                      <strong>Unidad: {prop.identificador_unidad}</strong>
+                      <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                        Usuario: {prop.nombre_completo} (ID: {prop.identificacion})
+                      </span>
+                    </div>
+                    <span className="badge badge-pagada">Activo en Unidad</span>
+                  </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {/* VISTA CUENTAS CON GRID CSS */}
           {vista === 'cuentas' && (
             <div className="card">
               <h2 className="card-header">Apertura de Cuenta Institucional</h2>
@@ -454,74 +588,312 @@ function App() {
             </div>
           )}
 
-          {/* VISTA FACTURACIÓN CON GRID CSS */}
           {vista === 'facturacion' && (
             <div className="card">
-              <h2 className="card-header">Generación de Cargos Mensuales</h2>
+              <h2 className="card-header">Generación de Cargos Mensuales por Unidad</h2>
               <form onSubmit={guardarDeuda}>
                 <div className="grid-form">
-                  <div className="form-group"><label>Local a Facturar</label><select className="form-control" name="propietario_id" value={formDeuda.propietario_id} onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} required><option value="">-- Seleccione un Local --</option>{propietarios.map(p => <option key={p.id} value={p.id}>{p.identificador_unidad} - {p.nombre_completo}</option>)}</select></div>
-                  <div className="form-group"><label>Concepto / Periodo</label><input type="text" className="form-control" name="mes_facturacion" value={formDeuda.mes_facturacion} onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Monto Total a Cobrar (USD)</label><input type="number" className="form-control" name="monto_cobrado" step="0.01" value={formDeuda.monto_cobrado} onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} required /></div>
+                  <div className="form-group">
+                    <label>Unidad / Local a Facturar</label>
+                    <select 
+                      className="form-control" 
+                      name="propietario_id" 
+                      value={formDeuda.propietario_id} 
+                      onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
+                      required
+                    >
+                      <option value="">-- Seleccione una Unidad --</option>
+                      {propietarios.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.identificador_unidad} - {p.nombre_completo} ({p.identificacion})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Concepto / Periodo</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      name="mes_facturacion" 
+                      placeholder="Ej: Condominio Julio 2026"
+                      value={formDeuda.mes_facturacion} 
+                      onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Monto Total a Cobrar (USD)</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      name="monto_cobrado" 
+                      step="0.01" 
+                      placeholder="0.00"
+                      value={formDeuda.monto_cobrado} 
+                      onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
                 </div>
-                <button type="submit" className="btn btn-danger mt-4">Emitir Deuda</button>
+                <button type="submit" className="btn btn-danger mt-4">Emitir Deuda a la Unidad</button>
               </form>
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Cargos</h3>
+
+              <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Cargos Emitidos</h3>
               <ul className="list-group">
                 {deudas.map(deuda => (
-                  <li key={deuda.id} className="list-item"><div><strong>{buscarLocal(deuda.propietario_id)}</strong><span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>{deuda.mes_facturacion}</span></div><div style={{ textAlign: 'left' }}><span className={`badge ${deuda.estado === 'Pendiente' ? 'badge-pendiente' : 'badge-pagada'}`}>{deuda.estado}</span><br/><strong style={{ marginTop: '8px', display: 'inline-block', fontSize: '1.1rem' }}>$ {deuda.monto_cobrado}</strong></div></li>
+                  <li key={deuda.id} className="list-item">
+                    <div>
+                      <strong>{buscarLocal(deuda.propietario_id)}</strong>
+                      <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                        {deuda.mes_facturacion}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'left' }}>
+                      <span className={`badge ${deuda.estado === 'Pendiente' ? 'badge-pendiente' : 'badge-pagada'}`}>
+                        {deuda.estado}
+                      </span>
+                      <br/>
+                      <strong style={{ marginTop: '8px', display: 'inline-block', fontSize: '1.1rem' }}>
+                        $ {deuda.monto_cobrado}
+                      </strong>
+                    </div>
+                  </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {/* VISTA PAGOS CON GRID CSS */}
           {vista === 'pagos' && (
             <div className="card">
               <h2 className="card-header">Recepción y Conciliación de Pagos</h2>
-              <form onSubmit={guardarPago}>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                if (!formPago.deuda_id || !formPago.cuenta_ingreso_id) return alert('Faltan datos clave.');
+                
+                let montoIngresado = parseFloat(formPago.monto_pagado);
+                let montoFinalUSD = montoIngresado;
+
+                if (formPago.moneda_pago === 'Bs') {
+                  if (!rate || !rate.rate_bcv) return alert('No hay tasa BCV activa para realizar la conversión.');
+                  montoFinalUSD = montoIngresado / Number(rate.rate_bcv);
+                }
+
+                const cuentaDestino = cuentas.find(c => c.id === formPago.cuenta_ingreso_id); 
+
+                const { error: errPago } = await supabase.from('pagos_recibidos').insert([{ 
+                  deuda_id: formPago.deuda_id, 
+                  cuenta_ingreso_id: formPago.cuenta_ingreso_id, 
+                  monto_pagado: montoFinalUSD, 
+                  monto_original: montoIngresado, 
+                  moneda_pago: formPago.moneda_pago,
+                  referencia: formPago.referencia, 
+                  fecha_pago: formPago.fecha_pago 
+                }]);
+
+                if (errPago) return alert('Error al registrar pago.');
+                
+                await supabase.from('deudas_mensuales').update({ estado: 'Pagada' }).eq('id', formPago.deuda_id);
+                await supabase.from('cuentas').update({ saldo_actual: cuentaDestino.saldo_actual + montoIngresado }).eq('id', formPago.cuenta_ingreso_id);
+                
+                alert('Pago registrado, convertido y saldos actualizados con éxito.');
+                setFormPago({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', moneda_pago: 'USD', referencia: '', fecha_pago: '' });
+                cargarPagos(); cargarDeudas(); cargarCuentas();
+              }}>
                 <div className="grid-form">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}><label>Factura a Pagar</label><select className="form-control" name="deuda_id" value={formPago.deuda_id} onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} required><option value="">-- Seleccione la Deuda --</option>{deudas.filter(d => d.estado === 'Pendiente').map(d => <option key={d.id} value={d.id}>{buscarLocal(d.propietario_id)} - {d.mes_facturacion} ($ {d.monto_cobrado})</option>)}</select></div>
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}><label>Cuenta Destino (Ingreso a)</label><select className="form-control" name="cuenta_ingreso_id" value={formPago.cuenta_ingreso_id} onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} required><option value="">-- Seleccione la Cuenta --</option>{cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})</option>)}</select></div>
-                  <div className="form-group"><label>Monto Depositado</label><input type="number" className="form-control" name="monto_pagado" step="0.01" value={formPago.monto_pagado} onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Nro. Referencia / Zelle</label><input type="text" className="form-control" name="referencia" value={formPago.referencia} onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Fecha de Operación</label><input type="date" className="form-control" name="fecha_pago" value={formPago.fecha_pago} onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} required /></div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Factura de Unidad a Pagar</label>
+                    <select 
+                      className="form-control" 
+                      name="deuda_id" 
+                      value={formPago.deuda_id} 
+                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                      required
+                    >
+                      <option value="">-- Seleccione la Deuda --</option>
+                      {deudas.filter(d => d.estado === 'Pendiente').map(d => (
+                        <option key={d.id} value={d.id}>
+                          {buscarLocal(d.propietario_id)} - {d.mes_facturacion} ($ {d.monto_cobrado})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Moneda en la que Paga</label>
+                    <select 
+                      className="form-control" 
+                      name="moneda_pago" 
+                      value={formPago.moneda_pago} 
+                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })}
+                    >
+                      <option value="USD">Dólares ($)</option>
+                      <option value="Bs">Bolívares (Bs.) {rate ? `(Tasa BCV: ${rate.rate_bcv})` : ''}</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Monto Depositado ({formPago.moneda_pago === 'Bs' ? 'Bs.' : '$'})</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      name="monto_pagado" 
+                      step="0.01" 
+                      value={formPago.monto_pagado} 
+                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Cuenta Destino (Ingreso a)</label>
+                    <select 
+                      className="form-control" 
+                      name="cuenta_ingreso_id" 
+                      value={formPago.cuenta_ingreso_id} 
+                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                      required
+                    >
+                      <option value="">-- Seleccione la Cuenta --</option>
+                      {cuentas.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Nro. Referencia / Zelle</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      name="referencia" 
+                      value={formPago.referencia} 
+                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Fecha de Operación</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      name="fecha_pago" 
+                      value={formPago.fecha_pago} 
+                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
                 </div>
                 <button type="submit" className="btn btn-success mt-4">Procesar y Conciliar Pago</button>
               </form>
+
               <h3 className="card-header" style={{ marginTop: '40px' }}>Últimos Ingresos</h3>
               <ul className="list-group">
                 {pagos.map(pago => {
                   const cuentaDestino = cuentas.find(c => c.id === pago.cuenta_ingreso_id);
                   const mon = cuentaDestino ? cuentaDestino.moneda : 'USD';
                   return (
-                    <li key={pago.id} className="list-item"><div><strong>Ref: {pago.referencia}</strong><span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>{pago.fecha_pago} | Ingresó a: {buscarCuenta(pago.cuenta_ingreso_id)}</span></div><strong style={{ color: 'var(--success)', fontSize: '1.2rem' }}>+ {renderMoneda(mon)} {pago.monto_pagado}</strong></li>
+                    <li key={pago.id} className="list-item">
+                      <div>
+                        <strong>Ref: {pago.referencia}</strong>
+                        <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                          {pago.fecha_pago} | Ingresó a: {buscarCuenta(pago.cuenta_ingreso_id)} {pago.moneda_pago ? `(${pago.moneda_pago})` : ''}
+                        </span>
+                      </div>
+                      <strong style={{ color: 'var(--success)', fontSize: '1.2rem' }}>
+                        + {renderMoneda(mon)} {pago.monto_pagado}
+                      </strong>
+                    </li>
                   )
                 })}
               </ul>
             </div>
           )}
 
-          {/* VISTA GASTOS CON GRID CSS */}
           {vista === 'gastos' && (
             <div className="card">
               <h2 className="card-header">Registro de Egresos Operativos</h2>
               <form onSubmit={guardarGasto}>
                 <div className="grid-form">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}><label>Cuenta de Origen (Pago desde)</label><select className="form-control" name="cuenta_origen_id" value={formGasto.cuenta_origen_id} onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} required><option value="">-- Seleccione de dónde sale el dinero --</option>{cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})</option>)}</select></div>
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}><label>Concepto del Gasto</label><input type="text" className="form-control" name="concepto" placeholder="Ej: Pago de conserjería, Reparación de bomba" value={formGasto.concepto} onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Monto a Descontar</label><input type="number" className="form-control" name="monto" step="0.01" value={formGasto.monto} onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} required /></div>
-                  <div className="form-group"><label>Fecha de Operación</label><input type="date" className="form-control" name="fecha_gasto" value={formGasto.fecha_gasto} onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} required /></div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Cuenta de Origen (Pago desde)</label>
+                    <select 
+                      className="form-control" 
+                      name="cuenta_origen_id" 
+                      value={formGasto.cuenta_origen_id} 
+                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                      required
+                    >
+                      <option value="">-- Seleccione de dónde sale el dinero --</option>
+                      {cuentas.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Concepto del Gasto</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      name="concepto" 
+                      placeholder="Ej: Pago de conserjería, Reparación de bomba" 
+                      value={formGasto.concepto} 
+                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Monto a Descontar</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      name="monto" 
+                      step="0.01" 
+                      value={formGasto.monto} 
+                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Fecha de Operación</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      name="fecha_gasto" 
+                      value={formGasto.fecha_gasto} 
+                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                      required 
+                    />
+                  </div>
                 </div>
                 <button type="submit" className="btn btn-warning mt-4">Registrar Egreso</button>
               </form>
+
               <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Salidas</h3>
               <ul className="list-group">
                 {gastos.map(gasto => {
                   const cuentaOrigen = cuentas.find(c => c.id === gasto.cuenta_origen_id);
                   const mon = cuentaOrigen ? cuentaOrigen.moneda : 'USD';
                   return (
-                    <li key={gasto.id} className="list-item"><div><strong>{gasto.concepto}</strong><span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>{gasto.fecha_gasto} | Desde: {buscarCuenta(gasto.cuenta_origen_id)}</span></div><strong style={{ color: 'var(--danger)', fontSize: '1.2rem' }}>- {renderMoneda(mon)} {gasto.monto}</strong></li>
+                    <li key={gasto.id} className="list-item">
+                      <div>
+                        <strong>{gasto.concepto}</strong>
+                        <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                          {gasto.fecha_gasto} | Desde: {buscarCuenta(gasto.cuenta_origen_id)}
+                        </span>
+                      </div>
+                      <strong style={{ color: 'var(--danger)', fontSize: '1.2rem' }}>
+                        - {renderMoneda(mon)} {gasto.monto}
+                      </strong>
+                    </li>
                   )
                 })}
               </ul>
@@ -530,6 +902,29 @@ function App() {
 
         </div>
       </main>
+
+      <nav className="bottom-nav">
+        <button className={`bottom-nav-item ${vista === 'propietarios' ? 'active' : ''}`} onClick={() => setVista('propietarios')}>
+          <span className="icon">🏢</span>
+          <span>Locales</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'cuentas' ? 'active' : ''}`} onClick={() => setVista('cuentas')}>
+          <span className="icon">🏦</span>
+          <span>Cuentas</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'facturacion' ? 'active' : ''}`} onClick={() => setVista('facturacion')}>
+          <span className="icon">📄</span>
+          <span>Cargos</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
+          <span className="icon">💵</span>
+          <span>Pagos</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'gastos' ? 'active' : ''}`} onClick={() => setVista('gastos')}>
+          <span className="icon">📉</span>
+          <span>Egresos</span>
+        </button>
+      </nav>
     </div>
   )
 }
