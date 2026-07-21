@@ -10,10 +10,10 @@ export default defineConfig({
       includeAssets: ['favicon.png'],
       manifest: {
         name: 'Sistema de Gestión y Finanzas',
-        short_name: 'Condominio C4',
+        short_name: 'PyP SGF',
         description: 'Sistema Administrativo Juan Pablo II',
         theme_color: '#0f172a',
-        background_color: '#f8fafc',s
+        background_color: '#f8fafc', /* <-- Aquí estaba el error (faltaba la coma) */
         display: 'standalone',
         icons: [
           {
