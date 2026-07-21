@@ -1,0 +1,33 @@
+:root {
+  /* Paleta Corporativa */
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #f8fafc;
+  --sidebar-active: #38bdf8;
+  
+  --bg-main: #f1f5f9;
+  --card-bg: #ffffff;
+  
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  
+  /* Colores de Acción */
+  --primary: #0056b3;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  
+  /* Tipografía */
+  --font-family: 'Inter', system-ui, sans-serif;
+}
+
+* { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+  font-family: var(--font-family); 
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+}

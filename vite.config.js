@@ -7,28 +7,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.png'],
       manifest: {
-        name: 'Condominio Juan Pablo II',
-        short_name: 'Condominio',
-        description: 'Control administrativo de condominio y pagos',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        name: 'Sistema de Gestión y Finanzas',
+        short_name: 'Condominio C4',
+        description: 'Sistema Administrativo Juan Pablo II',
+        theme_color: '#0f172a',
+        background_color: '#f8fafc',s
         display: 'standalone',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'favicon.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'favicon.png',
             sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
+            type: 'image/png'
           }
         ]
       }
     })
-  ]
+  ],
 })
