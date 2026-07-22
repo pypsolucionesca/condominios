@@ -69,12 +69,6 @@ const formatearFechaVE = (fechaISO) => {
 };
 
 function App() {
-  const [session, setSession] = useState(null)
-  const [userRole, setUserRole] = useState('usuario')
-  const [loginEmail, setLoginEmail] = useState('')
-  const [loginPassword, setLoginPassword] = useState('')
-  const [authLoading, setAuthLoading] = useState(false)
-
   const [vista, setVista] = useState('cuentas')
   const { rate, saveManualRate } = useExchangeRate()
 
@@ -100,78 +94,8 @@ function App() {
   const [tasaInput, setTasaInput] = useState('')
   const [menuHamburgerOpen, setMenuHamburgerOpen] = useState(false)
 
-  // Control de sesión y roles con respaldo administrativo
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session) verificarRolUsuario(session.user)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (session) {
-        verificarRolUsuario(session.user)
-      } else {
-        setUserRole('usuario')
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const verificarRolUsuario = async (user) => {
-    // CORREO MAESTRO DE EMERGENCIA (Admin automático si no está en la tabla perfiles)
-    if (user.email === 'admin@pypcloud.com' || user.email === 'lesme@pypcloud.com') {
-      setUserRole('administrador')
-      return
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('perfiles')
-        .select('rol')
-        .eq('id', user.id)
-        .maybeSingle()
-      
-      if (data && data.rol) {
-        setUserRole(data.rol)
-        if (data.rol === 'usuario') setVista('pagos')
-      } else {
-        // Por defecto si existe cuenta en Auth pero no en perfiles, se le asigna rol usuario
-        setUserRole('usuario')
-        setVista('pagos')
-      }
-    } catch (err) {
-      console.error('Error al verificar rol:', err)
-      setUserRole('usuario')
-    }
-  }
-
-  const handleLogin = async (e) => {
-    e.preventDefault()
-    setAuthLoading(true)
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: loginEmail,
-        password: loginPassword,
-      })
-      if (error) throw error
-    } catch (err) {
-      alert('Error al iniciar sesión: ' + err.message)
-    } finally {
-      setAuthLoading(false)
-    }
-  }
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setSession(null)
-  }
-
-  useEffect(() => {
-    if (session) {
-      cargarPropietarios(); cargarCuentas(); cargarDeudas(); cargarPagos(); cargarGastos();
-    }
+    cargarPropietarios(); cargarCuentas(); cargarDeudas(); cargarPagos(); cargarGastos();
     
     const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
     setIsStandalone(standalone)
@@ -181,7 +105,7 @@ function App() {
     const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); }
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-  }, [session])
+  }, [])
 
   const instalarApp = async () => {
     if (deferredPrompt) {
@@ -246,35 +170,6 @@ function App() {
     }
   }
 
-  // --- PANTALLA DE LOGIN SI NO HAY SESIÓN ---
-  if (!session) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', padding: '20px', boxSizing: 'border-box' }}>
-        <div style={{ background: '#ffffff', padding: '40px 30px', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', textAlign: 'center' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', margin: '0 auto 20px auto', background: '#f8fafc', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerText = '🛡️'; }} />
-          </div>
-          <h2 style={{ fontSize: '1.4rem', color: '#0f172a', marginBottom: '8px' }}>Sistema de Gestión y Finanzas</h2>
-          <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '25px' }}>Condominio Vecinal C4 • Juan Pablo II</p>
-          
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px', textAlign: 'left' }}>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Correo Electrónico</label>
-              <input type="email" className="form-control" placeholder="correo@ejemplo.com" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Contraseña</label>
-              <input type="password" className="form-control" placeholder="••••••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }} disabled={authLoading}>
-              {authLoading ? 'Verificando...' : 'Iniciar Sesión'}
-            </button>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="app-container">
       <style>{`
@@ -302,14 +197,14 @@ function App() {
         
         .main-content { 
           flex: 1; 
-          margin-left: ${userRole === 'administrador' ? '280px' : '0'}; 
+          margin-left: 280px; 
           padding: 30px; 
           display: flex; 
           flex-direction: column; 
           align-items: center; 
           min-width: 0; 
           box-sizing: border-box;
-          padding-top: 110px;
+          padding-top: 110px; /* Espacio para compensar el header superior fijo */
           padding-bottom: 90px;
         }
         
@@ -329,6 +224,7 @@ function App() {
         .grid-form .form-group { margin-bottom: 0; }
         .mt-4 { margin-top: 25px; }
 
+        /* BANNER DE TASA COMPACTO (INFORMATIVO) */
         .tasa-banner { 
           width: 100%; 
           background: #ffffff; 
@@ -381,6 +277,7 @@ function App() {
         .badge-pendiente { background: #fef08a; color: #854d0e; }
         .badge-pagada { background: #bbf7d0; color: #166534; }
 
+        /* HEADER SUPERIOR FIJO Y DE EXTREMO A EXTREMO (MÓVIL Y GENERAL) */
         .mobile-header-top {
           display: none;
           position: fixed;
@@ -431,6 +328,7 @@ function App() {
         }
         .hamburger-item:hover { background: #f8fafc; color: var(--primary); }
 
+        /* BARRA DE NAVEGACIÓN INFERIOR (MÓVIL) */
         .bottom-nav {
           display: none;
           position: fixed;
@@ -473,19 +371,35 @@ function App() {
           .main-content { 
             margin-left: 0 !important; 
             padding: 15px !important; 
-            padding-top: 85px !important; 
+            padding-top: 85px !important; /* Ajuste específico para el header fijo móvil */
             width: 100% !important; 
           }
           .mobile-header-top { display: flex; }
           .bottom-nav { display: flex; }
+          
+          .card { padding: 15px; }
+          .tasa-banner { 
+            flex-direction: row; 
+            align-items: center; 
+            justify-content: space-between;
+            gap: 10px; 
+            padding: 10px 12px;
+          }
+          .tasa-info-line { gap: 12px; }
+          .tasa-item-inline span { font-size: 0.65rem; }
+          .tasa-item-inline strong { font-size: 0.9rem; }
+          
+          .list-item { flex-direction: column; align-items: flex-start; gap: 5px; }
+          .list-item > div:last-child { text-align: left !important; width: 100%; }
         }
       `}</style>
 
-      {userRole === 'administrador' && <Sidebar vista={vista} setVista={setVista} />}
+      <Sidebar vista={vista} setVista={setVista} />
 
       <main className="main-content">
         <div className="content-wrapper">
           
+          {/* HEADER SUPERIOR FIJO DE EXTREMO A EXTREMO CON LOGO AMPLIADO */}
           <div className="mobile-header-top">
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#fff', flexShrink: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.2)' }}>
@@ -501,27 +415,32 @@ function App() {
               ☰
             </button>
 
+            {/* MENÚ HAMBURGUESA / CONFIGURACIÓN */}
             <div className={`hamburger-dropdown ${menuHamburgerOpen ? 'open' : ''}`}>
-              {userRole === 'administrador' && (
-                <>
-                  <button className="hamburger-item" onClick={() => { setVista('propietarios'); setMenuHamburgerOpen(false); }}>🏢 Locales y Propietarios</button>
-                  <button className="hamburger-item" onClick={() => { setVista('cuentas'); setMenuHamburgerOpen(false); }}>🏦 Bancos y Cajas</button>
-                  <button className="hamburger-item" onClick={() => { setVista('facturacion'); setMenuHamburgerOpen(false); }}>📄 Facturación Mensual</button>
-                  <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>💵 Recepción de Pagos</button>
-                  <button className="hamburger-item" onClick={() => { setVista('gastos'); setMenuHamburgerOpen(false); }}>📉 Egresos Operativos</button>
-                  <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
-                  <button className="hamburger-item" onClick={() => { setVista('configuracion'); setMenuHamburgerOpen(false); }}>⚙️ Configuración y Tasa BCV</button>
-                </>
-              )}
-              {userRole === 'usuario' && (
-                <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>💵 Reportar Pago</button>
-              )}
+              <button className="hamburger-item" onClick={() => { setVista('propietarios'); setMenuHamburgerOpen(false); }}>
+                🏢 Locales y Propietarios
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('cuentas'); setMenuHamburgerOpen(false); }}>
+                🏦 Bancos y Cajas
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('facturacion'); setMenuHamburgerOpen(false); }}>
+                📄 Facturación Mensual
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>
+                💵 Recepción de Pagos
+              </button>
+              <button className="hamburger-item" onClick={() => { setVista('gastos'); setMenuHamburgerOpen(false); }}>
+                📉 Egresos Operativos
+              </button>
               <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
-              <button className="hamburger-item" onClick={handleLogout} style={{ color: 'var(--danger)' }}>🚪 Cerrar Sesión</button>
+              <button className="hamburger-item" onClick={() => { setVista('configuracion'); setMenuHamburgerOpen(false); }}>
+                ⚙️ Configuración y Tasa BCV
+              </button>
             </div>
           </div>
           
-          {userRole === 'administrador' && vista === 'configuracion' && (
+          {/* VISTA DE CONFIGURACIÓN ADMINISTRATIVA (TASA BCV DE EMERGENCIA) */}
+          {vista === 'configuracion' && (
             <div className="card">
               <h2 className="card-header">Panel de Configuración Administrativa</h2>
               <div style={{ marginBottom: '20px' }}>
@@ -559,8 +478,10 @@ function App() {
             </div>
           )}
 
+          {/* VISTAS OPERATIVAS NORMALES CUANDO NO ESTÁN EN CONFIGURACIÓN */}
           {vista !== 'configuracion' && (
             <>
+              {/* BANNER DE TASA INFORMATIVO (SIN BOTÓN DE ACCIÓN DIRECTA) */}
               <div className="tasa-banner">
                 <div className="tasa-info-line">
                   <div className="tasa-item-inline">
@@ -588,7 +509,8 @@ function App() {
                 ) : null
               )}
 
-              {userRole === 'administrador' && vista === 'propietarios' && (
+              {/* VISTA PROPIETARIOS / UNIDADES CON MULTI-USUARIO */}
+              {vista === 'propietarios' && (
                 <div className="card">
                   <h2 className="card-header">Registro de Copropietarios e Inquilinos por Unidad</h2>
                   <form onSubmit={guardarPropietario}>
@@ -650,7 +572,8 @@ function App() {
                 </div>
               )}
 
-              {userRole === 'administrador' && vista === 'cuentas' && (
+              {/* VISTA CUENTAS CON GRID CSS */}
+              {vista === 'cuentas' && (
                 <div className="card">
                   <h2 className="card-header">Apertura de Cuenta Institucional</h2>
                   <form onSubmit={guardarCuenta}>
@@ -697,7 +620,8 @@ function App() {
                 </div>
               )}
 
-              {userRole === 'administrador' && vista === 'facturacion' && (
+              {/* VISTA FACTURACIÓN VINCULADA A UNIDADES */}
+              {vista === 'facturacion' && (
                 <div className="card">
                   <h2 className="card-header">Generación de Cargos Mensuales por Unidad</h2>
                   <form onSubmit={guardarDeuda}>
@@ -773,6 +697,7 @@ function App() {
                 </div>
               )}
 
+              {/* VISTA PAGOS CON CONVERSIÓN BCV */}
               {vista === 'pagos' && (
                 <div className="card">
                   <h2 className="card-header">Recepción y Conciliación de Pagos</h2>
@@ -803,9 +728,7 @@ function App() {
                     if (errPago) return alert('Error al registrar pago.');
                     
                     await supabase.from('deudas_mensuales').update({ estado: 'Pagada' }).eq('id', formPago.deuda_id);
-                    if (cuentaDestino) {
-                      await supabase.from('cuentas').update({ saldo_actual: cuentaDestino.saldo_actual + montoIngresado }).eq('id', formPago.cuenta_ingreso_id);
-                    }
+                    await supabase.from('cuentas').update({ saldo_actual: cuentaDestino.saldo_actual + montoIngresado }).eq('id', formPago.cuenta_ingreso_id);
                     
                     alert('Pago registrado, convertido y saldos actualizados con éxito.');
                     setFormPago({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', moneda_pago: 'USD', referencia: '', fecha_pago: '' });
@@ -924,7 +847,8 @@ function App() {
                 </div>
               )}
 
-              {userRole === 'administrador' && vista === 'gastos' && (
+              {/* VISTA GASTOS OPERATIVOS */}
+              {vista === 'gastos' && (
                 <div className="card">
                   <h2 className="card-header">Registro de Egresos Operativos</h2>
                   <form onSubmit={guardarGasto}>
@@ -1016,36 +940,28 @@ function App() {
         </div>
       </main>
 
+      {/* BARRA DE NAVEGACIÓN INFERIOR PARA MÓVILES */}
       <nav className="bottom-nav">
-        {userRole === 'administrador' ? (
-          <>
-            <button className={`bottom-nav-item ${vista === 'propietarios' ? 'active' : ''}`} onClick={() => setVista('propietarios')}>
-              <span className="icon">🏢</span>
-              <span>Locales</span>
-            </button>
-            <button className={`bottom-nav-item ${vista === 'cuentas' ? 'active' : ''}`} onClick={() => setVista('cuentas')}>
-              <span className="icon">🏦</span>
-              <span>Cuentas</span>
-            </button>
-            <button className={`bottom-nav-item ${vista === 'facturacion' ? 'active' : ''}`} onClick={() => setVista('facturacion')}>
-              <span className="icon">📄</span>
-              <span>Cargos</span>
-            </button>
-            <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
-              <span className="icon">💵</span>
-              <span>Pagos</span>
-            </button>
-            <button className={`bottom-nav-item ${vista === 'gastos' ? 'active' : ''}`} onClick={() => setVista('gastos')}>
-              <span className="icon">📉</span>
-              <span>Egresos</span>
-            </button>
-          </>
-        ) : (
-          <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
-            <span className="icon">💵</span>
-            <span>Reportar Pago</span>
-          </button>
-        )}
+        <button className={`bottom-nav-item ${vista === 'propietarios' ? 'active' : ''}`} onClick={() => setVista('propietarios')}>
+          <span className="icon">🏢</span>
+          <span>Locales</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'cuentas' ? 'active' : ''}`} onClick={() => setVista('cuentas')}>
+          <span className="icon">🏦</span>
+          <span>Cuentas</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'facturacion' ? 'active' : ''}`} onClick={() => setVista('facturacion')}>
+          <span className="icon">📄</span>
+          <span>Cargos</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
+          <span className="icon">💵</span>
+          <span>Pagos</span>
+        </button>
+        <button className={`bottom-nav-item ${vista === 'gastos' ? 'active' : ''}`} onClick={() => setVista('gastos')}>
+          <span className="icon">📉</span>
+          <span>Egresos</span>
+        </button>
       </nav>
     </div>
   )
