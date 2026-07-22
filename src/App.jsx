@@ -54,7 +54,6 @@ function useExchangeRate() {
   return { rate, loading, refreshing, error, saveManualRate, reloadRate: loadRate }
 }
 
-// --- UTILIDAD DE FECHA VENEZUELA ---
 const formatearFechaVE = (fechaISO) => {
   if (!fechaISO) return '--/--/----';
   try {
@@ -70,6 +69,12 @@ const formatearFechaVE = (fechaISO) => {
 };
 
 function App() {
+  const [session, setSession] = useState(null)
+  const [userRole, setUserRole] = useState('usuario')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+
   const [vista, setVista] = useState('cuentas')
   const { rate, saveManualRate } = useExchangeRate()
 
@@ -95,8 +100,78 @@ function App() {
   const [tasaInput, setTasaInput] = useState('')
   const [menuHamburgerOpen, setMenuHamburgerOpen] = useState(false)
 
+  // Control de sesión y roles con respaldo administrativo
   useEffect(() => {
-    cargarPropietarios(); cargarCuentas(); cargarDeudas(); cargarPagos(); cargarGastos();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      if (session) verificarRolUsuario(session.user)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session) {
+        verificarRolUsuario(session.user)
+      } else {
+        setUserRole('usuario')
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const verificarRolUsuario = async (user) => {
+    // CORREO MAESTRO DE EMERGENCIA (Admin automático si no está en la tabla perfiles)
+    if (user.email === 'admin@pypcloud.com' || user.email === 'lesme@pypcloud.com') {
+      setUserRole('administrador')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .select('rol')
+        .eq('id', user.id)
+        .maybeSingle()
+      
+      if (data && data.rol) {
+        setUserRole(data.rol)
+        if (data.rol === 'usuario') setVista('pagos')
+      } else {
+        // Por defecto si existe cuenta en Auth pero no en perfiles, se le asigna rol usuario
+        setUserRole('usuario')
+        setVista('pagos')
+      }
+    } catch (err) {
+      console.error('Error al verificar rol:', err)
+      setUserRole('usuario')
+    }
+  }
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setAuthLoading(true)
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      })
+      if (error) throw error
+    } catch (err) {
+      alert('Error al iniciar sesión: ' + err.message)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+  }
+
+  useEffect(() => {
+    if (session) {
+      cargarPropietarios(); cargarCuentas(); cargarDeudas(); cargarPagos(); cargarGastos();
+    }
     
     const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
     setIsStandalone(standalone)
@@ -106,7 +181,7 @@ function App() {
     const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); }
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-  }, [])
+  }, [session])
 
   const instalarApp = async () => {
     if (deferredPrompt) {
@@ -171,6 +246,35 @@ function App() {
     }
   }
 
+  // --- PANTALLA DE LOGIN SI NO HAY SESIÓN ---
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0f172a', padding: '20px', boxSizing: 'border-box' }}>
+        <div style={{ background: '#ffffff', padding: '40px 30px', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', textAlign: 'center' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', overflow: 'hidden', margin: '0 auto 20px auto', background: '#f8fafc', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerText = '🛡️'; }} />
+          </div>
+          <h2 style={{ fontSize: '1.4rem', color: '#0f172a', marginBottom: '8px' }}>Sistema de Gestión y Finanzas</h2>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '25px' }}>Condominio Vecinal C4 • Juan Pablo II</p>
+          
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px', textAlign: 'left' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Correo Electrónico</label>
+              <input type="email" className="form-control" placeholder="correo@ejemplo.com" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>Contraseña</label>
+              <input type="password" className="form-control" placeholder="••••••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }} disabled={authLoading}>
+              {authLoading ? 'Verificando...' : 'Iniciar Sesión'}
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app-container">
       <style>{`
@@ -198,13 +302,14 @@ function App() {
         
         .main-content { 
           flex: 1; 
-          margin-left: 280px; 
+          margin-left: ${userRole === 'administrador' ? '280px' : '0'}; 
           padding: 30px; 
           display: flex; 
           flex-direction: column; 
           align-items: center; 
           min-width: 0; 
           box-sizing: border-box;
+          padding-top: 110px;
           padding-bottom: 90px;
         }
         
@@ -248,20 +353,6 @@ function App() {
         .tasa-item-inline { display: flex; align-items: baseline; gap: 8px; }
         .tasa-item-inline span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 700; }
         .tasa-item-inline strong { color: var(--text-main); font-size: 1rem; }
-        
-        .btn-tasa { 
-          background: var(--primary); 
-          color: white; 
-          border: none; 
-          padding: 6px 14px; 
-          border-radius: 6px; 
-          font-size: 0.8rem; 
-          cursor: pointer; 
-          font-weight: 600; 
-          white-space: nowrap; 
-          transition: opacity 0.2s; 
-        }
-        .btn-tasa:hover { opacity: 0.9; }
 
         .install-banner { width: 100%; background: var(--primary); color: white; padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 10px; flex-wrap: wrap; box-sizing: border-box; }
         .install-banner button { background: white; color: var(--primary); border: none; padding: 8px 16px; border-radius: 5px; font-weight: bold; cursor: pointer; white-space: nowrap; }
@@ -292,40 +383,43 @@ function App() {
 
         .mobile-header-top {
           display: none;
-          width: 100%;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
           background: #0f172a;
           color: white;
-          padding: 12px 15px;
+          padding: 12px 20px;
           justify-content: space-between;
           align-items: center;
           box-sizing: border-box;
-          margin-bottom: 20px;
-          border-radius: 8px;
+          z-index: 1000;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
         .hamburger-btn {
           background: transparent;
           border: none;
           color: white;
-          font-size: 1.5rem;
+          font-size: 1.6rem;
           cursor: pointer;
         }
         .hamburger-dropdown {
           display: none;
           position: absolute;
-          top: 60px;
+          top: 75px;
           right: 15px;
           background: white;
           color: #0f172a;
           border-radius: 8px;
           box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-          width: 220px;
-          z-index: 1000;
+          width: 240px;
+          z-index: 1001;
           overflow: hidden;
           border: 1px solid #cbd5e1;
         }
         .hamburger-dropdown.open { display: block; }
         .hamburger-item {
-          padding: 12px 15px;
+          padding: 14px 18px;
           border-bottom: 1px solid #f1f5f9;
           font-weight: 600;
           font-size: 0.9rem;
@@ -378,552 +472,580 @@ function App() {
 
           .main-content { 
             margin-left: 0 !important; 
-            padding: 12px !important; 
+            padding: 15px !important; 
+            padding-top: 85px !important; 
             width: 100% !important; 
           }
           .mobile-header-top { display: flex; }
           .bottom-nav { display: flex; }
-          
-          .card { padding: 15px; }
-          .tasa-banner { 
-            flex-direction: row; 
-            align-items: center; 
-            justify-content: space-between;
-            gap: 10px; 
-            padding: 10px 12px;
-          }
-          .tasa-info-line { gap: 12px; }
-          .tasa-item-inline span { font-size: 0.65rem; }
-          .tasa-item-inline strong { font-size: 0.9rem; }
-          .btn-tasa { padding: 5px 10px; font-size: 0.75rem; }
-          
-          .list-item { flex-direction: column; align-items: flex-start; gap: 5px; }
-          .list-item > div:last-child { text-align: left !important; width: 100%; }
         }
       `}</style>
 
-      <Sidebar vista={vista} setVista={setVista} />
+      {userRole === 'administrador' && <Sidebar vista={vista} setVista={setVista} />}
 
       <main className="main-content">
         <div className="content-wrapper">
           
-         {/* HEADER SUPERIOR MÓVIL CON LOGO Y TÍTULO COMPLETO */}
-          <div className="mobile-header-top" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: '#fff', flexShrink: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerText = '🛡️'; }} />
+          <div className="mobile-header-top">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#fff', flexShrink: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.2)' }}>
+                <img src="/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerText = '🛡️'; }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: 'bold', lineHeight: '1.2' }}>Sistema de Gestión y Finanzas</div>
+                <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>Condominio Vecinal C4 • Juan Pablo II</div>
+              </div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.95rem', fontWeight: 'bold', lineHeight: '1.2' }}>Sistema de Gestión y Finanzas</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Condominio Vecinal C4 • Juan Pablo II</div>
-            </div>
-            <button className="hamburger-btn" onClick={() => setMenuHamburgerOpen(!menuHamburgerOpen)} style={{ flexShrink: '0' }}>
+            
+            <button className="hamburger-btn" onClick={() => setMenuHamburgerOpen(!menuHamburgerOpen)}>
               ☰
             </button>
 
             <div className={`hamburger-dropdown ${menuHamburgerOpen ? 'open' : ''}`}>
-              <button className="hamburger-item" onClick={() => { setVista('propietarios'); setMenuHamburgerOpen(false); }}>
-                🏢 Locales y Propietarios
-              </button>
-              <button className="hamburger-item" onClick={() => { setVista('cuentas'); setMenuHamburgerOpen(false); }}>
-                🏦 Bancos y Cajas
-              </button>
-              <button className="hamburger-item" onClick={() => { setVista('facturacion'); setMenuHamburgerOpen(false); }}>
-                📄 Facturación Mensual
-              </button>
-              <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>
-                💵 Recepción de Pagos
-              </button>
-              <button className="hamburger-item" onClick={() => { setVista('gastos'); setMenuHamburgerOpen(false); }}>
-                📉 Egresos Operativos
-              </button>
+              {userRole === 'administrador' && (
+                <>
+                  <button className="hamburger-item" onClick={() => { setVista('propietarios'); setMenuHamburgerOpen(false); }}>🏢 Locales y Propietarios</button>
+                  <button className="hamburger-item" onClick={() => { setVista('cuentas'); setMenuHamburgerOpen(false); }}>🏦 Bancos y Cajas</button>
+                  <button className="hamburger-item" onClick={() => { setVista('facturacion'); setMenuHamburgerOpen(false); }}>📄 Facturación Mensual</button>
+                  <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>💵 Recepción de Pagos</button>
+                  <button className="hamburger-item" onClick={() => { setVista('gastos'); setMenuHamburgerOpen(false); }}>📉 Egresos Operativos</button>
+                  <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
+                  <button className="hamburger-item" onClick={() => { setVista('configuracion'); setMenuHamburgerOpen(false); }}>⚙️ Configuración y Tasa BCV</button>
+                </>
+              )}
+              {userRole === 'usuario' && (
+                <button className="hamburger-item" onClick={() => { setVista('pagos'); setMenuHamburgerOpen(false); }}>💵 Reportar Pago</button>
+              )}
+              <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }}></div>
+              <button className="hamburger-item" onClick={handleLogout} style={{ color: 'var(--danger)' }}>🚪 Cerrar Sesión</button>
             </div>
           </div>
           
-          <div className="tasa-banner">
-            <div className="tasa-info-line">
-              <div className="tasa-item-inline">
-                <span>Tasa BCV:</span>
-                <strong>{rate ? `Bs. ${Number(rate.rate_bcv).toFixed(2)}` : 'Cargando...'}</strong>
-              </div>
-              <div className="tasa-item-inline">
-                <span>Actualizada:</span>
-                <strong>{rate ? formatearFechaVE(rate.rate_date) : '--/--/----'}</strong>
-              </div>
-            </div>
-            <button className="btn-tasa" onClick={() => setShowModalTasa(true)}>Actualizar Tasa</button>
-          </div>
-
-          {showModalTasa && (
-            <div className="card" style={{ padding: '20px', marginBottom: '20px', backgroundColor: '#fffbeb' }}>
-              <h3 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Ingresar Nueva Tasa BCV Oficial</h3>
-              <div className="form-group" style={{ marginTop: '10px' }}>
-                <input type="number" step="0.01" className="form-control" placeholder="Ej: 737.23" value={tasaInput} onChange={(e) => setTasaInput(e.target.value)} />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button className="btn btn-success" onClick={actualizarTasaManual} style={{ flex: 1, margin: 0 }}>Guardar Tasa</button>
-                <button className="btn btn-danger" onClick={() => setShowModalTasa(false)} style={{ flex: 1, margin: 0 }}>Cancelar</button>
-              </div>
-            </div>
-          )}
-
-          {!isStandalone && (
-            deferredPrompt ? (
-              <div className="install-banner">
-                <span>💻 Instala esta aplicación para acceso rápido.</span>
-                <button onClick={instalarApp}>Instalar App</button>
-              </div>
-            ) : isIOS ? (
-              <div className="install-banner" style={{ background: '#334155' }}>
-                <span>🍏 En iPhone: Toca "Compartir" y luego "Agregar a inicio".</span>
-              </div>
-            ) : null
-          )}
-
-          {vista === 'propietarios' && (
+          {userRole === 'administrador' && vista === 'configuracion' && (
             <div className="card">
-              <h2 className="card-header">Registro de Copropietarios e Inquilinos por Unidad</h2>
-              <form onSubmit={guardarPropietario}>
-                <div className="grid-form">
-                  <div className="form-group">
-                    <label>Identificador de Unidad (Local / Apto)</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      name="identificador_unidad" 
-                      placeholder="Ej: Local 1, Apto 4B"
-                      value={formPropietario.identificador_unidad} 
-                      onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
-                      required 
-                    />
+              <h2 className="card-header">Panel de Configuración Administrativa</h2>
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                  El sistema actualiza la tasa del BCV de forma automática. Este panel administrativo está disponible exclusivamente como mecanismo de seguridad ante fallas de conectividad o de la API oficial.
+                </p>
+              </div>
+
+              <div className="tasa-banner" style={{ margin: '0 0 25px 0' }}>
+                <div className="tasa-info-line">
+                  <div className="tasa-item-inline">
+                    <span>Tasa BCV Activa:</span>
+                    <strong>{rate ? `Bs. ${Number(rate.rate_bcv).toFixed(2)}` : 'Cargando...'}</strong>
                   </div>
-                  <div className="form-group">
-                    <label>Nombre del Usuario / Propietario</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      name="nombre_completo" 
-                      placeholder="Nombre y apellido"
-                      value={formPropietario.nombre_completo} 
-                      onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Cédula o RIF</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      name="identificacion" 
-                      placeholder="V-12345678"
-                      value={formPropietario.identificacion} 
-                      onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
-                      required 
-                    />
+                  <div className="tasa-item-inline">
+                    <span>Actualizada:</span>
+                    <strong>{rate ? formatearFechaVE(rate.rate_date) : '--/--/----'}</strong>
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary mt-4">Vincular Usuario a la Unidad</button>
-              </form>
+                <button className="btn-tasa" onClick={() => setShowModalTasa(true)}>Forzar Actualización Manual</button>
+              </div>
 
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Directorio de Unidades y Usuarios Asociados</h3>
-              <ul className="list-group">
-                {propietarios.map(prop => (
-                  <li key={prop.id} className="list-item">
-                    <div>
-                      <strong>Unidad: {prop.identificador_unidad}</strong>
-                      <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
-                        Usuario: {prop.nombre_completo} (ID: {prop.identificacion})
-                      </span>
-                    </div>
-                    <span className="badge badge-pagada">Activo en Unidad</span>
-                  </li>
-                ))}
-              </ul>
+              {showModalTasa && (
+                <div className="card" style={{ padding: '20px', marginBottom: '20px', backgroundColor: '#fffbeb' }}>
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Ingresar Nueva Tasa BCV Oficial</h3>
+                  <div className="form-group" style={{ marginTop: '10px' }}>
+                    <input type="number" step="0.01" className="form-control" placeholder="Ej: 737.23" value={tasaInput} onChange={(e) => setTasaInput(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button className="btn btn-success" onClick={actualizarTasaManual} style={{ flex: 1, margin: 0 }}>Guardar Tasa</button>
+                    <button className="btn btn-danger" onClick={() => setShowModalTasa(false)} style={{ flex: 1, margin: 0 }}>Cancelar</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {vista === 'cuentas' && (
-            <div className="card">
-              <h2 className="card-header">Apertura de Cuenta Institucional</h2>
-              <form onSubmit={guardarCuenta}>
-                <div className="grid-form">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Nombre de la Cuenta (Ej: Banesco Bs, Caja Chica Dólares)</label>
-                    <input type="text" className="form-control" name="nombre_cuenta" value={formCuenta.nombre_cuenta} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })} required />
+          {vista !== 'configuracion' && (
+            <>
+              <div className="tasa-banner">
+                <div className="tasa-info-line">
+                  <div className="tasa-item-inline">
+                    <span>Tasa BCV:</span>
+                    <strong>{rate ? `Bs. ${Number(rate.rate_bcv).toFixed(2)}` : 'Cargando...'}</strong>
                   </div>
-                  <div className="form-group">
-                    <label>Tipo de Instrumento</label>
-                    <select className="form-control" name="tipo_cuenta" value={formCuenta.tipo_cuenta} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })}>
-                      <option value="Caja">Caja Chica (Efectivo)</option>
-                      <option value="Banco">Cuenta Bancaria</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Moneda Operativa</label>
-                    <select className="form-control" name="moneda" value={formCuenta.moneda} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })}>
-                      <option value="USD">Dólares (USD)</option>
-                      <option value="Bs">Bolívares (Bs)</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Saldo Inicial</label>
-                    <input type="number" className="form-control" name="saldo_actual" step="0.01" value={formCuenta.saldo_actual} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })} required />
+                  <div className="tasa-item-inline">
+                    <span>Actualizada:</span>
+                    <strong>{rate ? formatearFechaVE(rate.rate_date) : '--/--/----'}</strong>
                   </div>
                 </div>
-                <button type="submit" className="btn btn-primary mt-4">Registrar Cuenta</button>
-              </form>
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Saldos Disponibles</h3>
-              <ul className="list-group">
-                {cuentas.map(c => (
-                  <li key={c.id} className="list-item">
-                    <div>
-                      <strong>{c.nombre_cuenta}</strong>
-                      <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>{c.tipo_cuenta} • Moneda: {c.moneda || 'USD'}</span>
-                    </div>
-                    <strong style={{ fontSize: '1.4rem', color: 'var(--success)' }}>
-                      {renderMoneda(c.moneda)} {c.saldo_actual}
-                    </strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Automático (BCV)</span>
+              </div>
 
-          {vista === 'facturacion' && (
-            <div className="card">
-              <h2 className="card-header">Generación de Cargos Mensuales por Unidad</h2>
-              <form onSubmit={guardarDeuda}>
-                <div className="grid-form">
-                  <div className="form-group">
-                    <label>Unidad / Local a Facturar</label>
-                    <select 
-                      className="form-control" 
-                      name="propietario_id" 
-                      value={formDeuda.propietario_id} 
-                      onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
-                      required
-                    >
-                      <option value="">-- Seleccione una Unidad --</option>
-                      {propietarios.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.identificador_unidad} - {p.nombre_completo} ({p.identificacion})
-                        </option>
-                      ))}
-                    </select>
+              {!isStandalone && (
+                deferredPrompt ? (
+                  <div className="install-banner">
+                    <span>💻 Instala esta aplicación para acceso rápido.</span>
+                    <button onClick={instalarApp}>Instalar App</button>
                   </div>
-                  <div className="form-group">
-                    <label>Concepto / Periodo</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      name="mes_facturacion" 
-                      placeholder="Ej: Condominio Julio 2026"
-                      value={formDeuda.mes_facturacion} 
-                      onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
-                      required 
-                    />
+                ) : isIOS ? (
+                  <div className="install-banner" style={{ background: '#334155' }}>
+                    <span>🍏 En iPhone: Toca "Compartir" y luego "Agregar a inicio".</span>
                   </div>
-                  <div className="form-group">
-                    <label>Monto Total a Cobrar (USD)</label>
-                    <input 
-                      type="number" 
-                      className="form-control" 
-                      name="monto_cobrado" 
-                      step="0.01" 
-                      placeholder="0.00"
-                      value={formDeuda.monto_cobrado} 
-                      onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-                </div>
-                <button type="submit" className="btn btn-danger mt-4">Emitir Deuda a la Unidad</button>
-              </form>
+                ) : null
+              )}
 
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Cargos Emitidos</h3>
-              <ul className="list-group">
-                {deudas.map(deuda => (
-                  <li key={deuda.id} className="list-item">
-                    <div>
-                      <strong>{buscarLocal(deuda.propietario_id)}</strong>
-                      <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
-                        {deuda.mes_facturacion}
-                      </span>
-                    </div>
-                    <div style={{ textAlign: 'left' }}>
-                      <span className={`badge ${deuda.estado === 'Pendiente' ? 'badge-pendiente' : 'badge-pagada'}`}>
-                        {deuda.estado}
-                      </span>
-                      <br/>
-                      <strong style={{ marginTop: '8px', display: 'inline-block', fontSize: '1.1rem' }}>
-                        $ {deuda.monto_cobrado}
-                      </strong>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {vista === 'pagos' && (
-            <div className="card">
-              <h2 className="card-header">Recepción y Conciliación de Pagos</h2>
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                if (!formPago.deuda_id || !formPago.cuenta_ingreso_id) return alert('Faltan datos clave.');
-                
-                let montoIngresado = parseFloat(formPago.monto_pagado);
-                let montoFinalUSD = montoIngresado;
-
-                if (formPago.moneda_pago === 'Bs') {
-                  if (!rate || !rate.rate_bcv) return alert('No hay tasa BCV activa para realizar la conversión.');
-                  montoFinalUSD = montoIngresado / Number(rate.rate_bcv);
-                }
-
-                const cuentaDestino = cuentas.find(c => c.id === formPago.cuenta_ingreso_id); 
-
-                const { error: errPago } = await supabase.from('pagos_recibidos').insert([{ 
-                  deuda_id: formPago.deuda_id, 
-                  cuenta_ingreso_id: formPago.cuenta_ingreso_id, 
-                  monto_pagado: montoFinalUSD, 
-                  monto_original: montoIngresado, 
-                  moneda_pago: formPago.moneda_pago,
-                  referencia: formPago.referencia, 
-                  fecha_pago: formPago.fecha_pago 
-                }]);
-
-                if (errPago) return alert('Error al registrar pago.');
-                
-                await supabase.from('deudas_mensuales').update({ estado: 'Pagada' }).eq('id', formPago.deuda_id);
-                await supabase.from('cuentas').update({ saldo_actual: cuentaDestino.saldo_actual + montoIngresado }).eq('id', formPago.cuenta_ingreso_id);
-                
-                alert('Pago registrado, convertido y saldos actualizados con éxito.');
-                setFormPago({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', moneda_pago: 'USD', referencia: '', fecha_pago: '' });
-                cargarPagos(); cargarDeudas(); cargarCuentas();
-              }}>
-                <div className="grid-form">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Factura de Unidad a Pagar</label>
-                    <select 
-                      className="form-control" 
-                      name="deuda_id" 
-                      value={formPago.deuda_id} 
-                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
-                      required
-                    >
-                      <option value="">-- Seleccione la Deuda --</option>
-                      {deudas.filter(d => d.estado === 'Pendiente').map(d => (
-                        <option key={d.id} value={d.id}>
-                          {buscarLocal(d.propietario_id)} - {d.mes_facturacion} ($ {d.monto_cobrado})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Moneda en la que Paga</label>
-                    <select 
-                      className="form-control" 
-                      name="moneda_pago" 
-                      value={formPago.moneda_pago} 
-                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })}
-                    >
-                      <option value="USD">Dólares ($)</option>
-                      <option value="Bs">Bolívares (Bs.) {rate ? `(Tasa BCV: ${rate.rate_bcv})` : ''}</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Monto Depositado ({formPago.moneda_pago === 'Bs' ? 'Bs.' : '$'})</label>
-                    <input 
-                      type="number" 
-                      className="form-control" 
-                      name="monto_pagado" 
-                      step="0.01" 
-                      value={formPago.monto_pagado} 
-                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Cuenta Destino (Ingreso a)</label>
-                    <select 
-                      className="form-control" 
-                      name="cuenta_ingreso_id" 
-                      value={formPago.cuenta_ingreso_id} 
-                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
-                      required
-                    >
-                      <option value="">-- Seleccione la Cuenta --</option>
-                      {cuentas.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Nro. Referencia / Zelle</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      name="referencia" 
-                      value={formPago.referencia} 
-                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Fecha de Operación</label>
-                    <input 
-                      type="date" 
-                      className="form-control" 
-                      name="fecha_pago" 
-                      value={formPago.fecha_pago} 
-                      onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-                </div>
-                <button type="submit" className="btn btn-success mt-4">Procesar y Conciliar Pago</button>
-              </form>
-
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Últimos Ingresos</h3>
-              <ul className="list-group">
-                {pagos.map(pago => {
-                  const cuentaDestino = cuentas.find(c => c.id === pago.cuenta_ingreso_id);
-                  const mon = cuentaDestino ? cuentaDestino.moneda : 'USD';
-                  return (
-                    <li key={pago.id} className="list-item">
-                      <div>
-                        <strong>Ref: {pago.referencia}</strong>
-                        <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
-                          {pago.fecha_pago} | Ingresó a: {buscarCuenta(pago.cuenta_ingreso_id)} {pago.moneda_pago ? `(${pago.moneda_pago})` : ''}
-                        </span>
+              {userRole === 'administrador' && vista === 'propietarios' && (
+                <div className="card">
+                  <h2 className="card-header">Registro de Copropietarios e Inquilinos por Unidad</h2>
+                  <form onSubmit={guardarPropietario}>
+                    <div className="grid-form">
+                      <div className="form-group">
+                        <label>Identificador de Unidad (Local / Apto)</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          name="identificador_unidad" 
+                          placeholder="Ej: Local 1, Apto 4B"
+                          value={formPropietario.identificador_unidad} 
+                          onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
+                          required 
+                        />
                       </div>
-                      <strong style={{ color: 'var(--success)', fontSize: '1.2rem' }}>
-                        + {renderMoneda(mon)} {pago.monto_pagado}
-                      </strong>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
-
-          {vista === 'gastos' && (
-            <div className="card">
-              <h2 className="card-header">Registro de Egresos Operativos</h2>
-              <form onSubmit={guardarGasto}>
-                <div className="grid-form">
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Cuenta de Origen (Pago desde)</label>
-                    <select 
-                      className="form-control" 
-                      name="cuenta_origen_id" 
-                      value={formGasto.cuenta_origen_id} 
-                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
-                      required
-                    >
-                      <option value="">-- Seleccione de dónde sale el dinero --</option>
-                      {cuentas.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Concepto del Gasto</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      name="concepto" 
-                      placeholder="Ej: Pago de conserjería, Reparación de bomba" 
-                      value={formGasto.concepto} 
-                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Monto a Descontar</label>
-                    <input 
-                      type="number" 
-                      className="form-control" 
-                      name="monto" 
-                      step="0.01" 
-                      value={formGasto.monto} 
-                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Fecha de Operación</label>
-                    <input 
-                      type="date" 
-                      className="form-control" 
-                      name="fecha_gasto" 
-                      value={formGasto.fecha_gasto} 
-                      onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
-                      required 
-                    />
-                  </div>
-                </div>
-                <button type="submit" className="btn btn-warning mt-4">Registrar Egreso</button>
-              </form>
-
-              <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Salidas</h3>
-              <ul className="list-group">
-                {gastos.map(gasto => {
-                  const cuentaOrigen = cuentas.find(c => c.id === gasto.cuenta_origen_id);
-                  const mon = cuentaOrigen ? cuentaOrigen.moneda : 'USD';
-                  return (
-                    <li key={gasto.id} className="list-item">
-                      <div>
-                        <strong>{gasto.concepto}</strong>
-                        <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
-                          {gasto.fecha_gasto} | Desde: {buscarCuenta(gasto.cuenta_origen_id)}
-                        </span>
+                      <div className="form-group">
+                        <label>Nombre del Usuario / Propietario</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          name="nombre_completo" 
+                          placeholder="Nombre y apellido"
+                          value={formPropietario.nombre_completo} 
+                          onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
+                          required 
+                        />
                       </div>
-                      <strong style={{ color: 'var(--danger)', fontSize: '1.2rem' }}>
-                        - {renderMoneda(mon)} {gasto.monto}
-                      </strong>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
+                      <div className="form-group">
+                        <label>Cédula o RIF</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          name="identificacion" 
+                          placeholder="V-12345678"
+                          value={formPropietario.identificacion} 
+                          onChange={(e) => setFormPropietario({ ...formPropietario, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" className="btn btn-primary mt-4">Vincular Usuario a la Unidad</button>
+                  </form>
+
+                  <h3 className="card-header" style={{ marginTop: '40px' }}>Directorio de Unidades y Usuarios Asociados</h3>
+                  <ul className="list-group">
+                    {propietarios.map(prop => (
+                      <li key={prop.id} className="list-item">
+                        <div>
+                          <strong>Unidad: {prop.identificador_unidad}</strong>
+                          <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                            Usuario: {prop.nombre_completo} (ID: {prop.identificacion})
+                          </span>
+                        </div>
+                        <span className="badge badge-pagada">Activo en Unidad</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {userRole === 'administrador' && vista === 'cuentas' && (
+                <div className="card">
+                  <h2 className="card-header">Apertura de Cuenta Institucional</h2>
+                  <form onSubmit={guardarCuenta}>
+                    <div className="grid-form">
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Nombre de la Cuenta (Ej: Banesco Bs, Caja Chica Dólares)</label>
+                        <input type="text" className="form-control" name="nombre_cuenta" value={formCuenta.nombre_cuenta} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })} required />
+                      </div>
+                      <div className="form-group">
+                        <label>Tipo de Instrumento</label>
+                        <select className="form-control" name="tipo_cuenta" value={formCuenta.tipo_cuenta} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })}>
+                          <option value="Caja">Caja Chica (Efectivo)</option>
+                          <option value="Banco">Cuenta Bancaria</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Moneda Operativa</label>
+                        <select className="form-control" name="moneda" value={formCuenta.moneda} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })}>
+                          <option value="USD">Dólares (USD)</option>
+                          <option value="Bs">Bolívares (Bs)</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Saldo Inicial</label>
+                        <input type="number" className="form-control" name="saldo_actual" step="0.01" value={formCuenta.saldo_actual} onChange={(e) => setFormCuenta({ ...formCuenta, [e.target.name]: e.target.value })} required />
+                      </div>
+                    </div>
+                    <button type="submit" className="btn btn-primary mt-4">Registrar Cuenta</button>
+                  </form>
+                  <h3 className="card-header" style={{ marginTop: '40px' }}>Saldos Disponibles</h3>
+                  <ul className="list-group">
+                    {cuentas.map(c => (
+                      <li key={c.id} className="list-item">
+                        <div>
+                          <strong>{c.nombre_cuenta}</strong>
+                          <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>{c.tipo_cuenta} • Moneda: {c.moneda || 'USD'}</span>
+                        </div>
+                        <strong style={{ fontSize: '1.4rem', color: 'var(--success)' }}>
+                          {renderMoneda(c.moneda)} {c.saldo_actual}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {userRole === 'administrador' && vista === 'facturacion' && (
+                <div className="card">
+                  <h2 className="card-header">Generación de Cargos Mensuales por Unidad</h2>
+                  <form onSubmit={guardarDeuda}>
+                    <div className="grid-form">
+                      <div className="form-group">
+                        <label>Unidad / Local a Facturar</label>
+                        <select 
+                          className="form-control" 
+                          name="propietario_id" 
+                          value={formDeuda.propietario_id} 
+                          onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
+                          required
+                        >
+                          <option value="">-- Seleccione una Unidad --</option>
+                          {propietarios.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.identificador_unidad} - {p.nombre_completo} ({p.identificacion})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Concepto / Periodo</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          name="mes_facturacion" 
+                          placeholder="Ej: Condominio Julio 2026"
+                          value={formDeuda.mes_facturacion} 
+                          onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Monto Total a Cobrar (USD)</label>
+                        <input 
+                          type="number" 
+                          className="form-control" 
+                          name="monto_cobrado" 
+                          step="0.01" 
+                          placeholder="0.00"
+                          value={formDeuda.monto_cobrado} 
+                          onChange={(e) => setFormDeuda({ ...formDeuda, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" className="btn btn-danger mt-4">Emitir Deuda a la Unidad</button>
+                  </form>
+
+                  <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Cargos Emitidos</h3>
+                  <ul className="list-group">
+                    {deudas.map(deuda => (
+                      <li key={deuda.id} className="list-item">
+                        <div>
+                          <strong>{buscarLocal(deuda.propietario_id)}</strong>
+                          <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                            {deuda.mes_facturacion}
+                          </span>
+                        </div>
+                        <div style={{ textAlign: 'left' }}>
+                          <span className={`badge ${deuda.estado === 'Pendiente' ? 'badge-pendiente' : 'badge-pagada'}`}>
+                            {deuda.estado}
+                          </span>
+                          <br/>
+                          <strong style={{ marginTop: '8px', display: 'inline-block', fontSize: '1.1rem' }}>
+                            $ {deuda.monto_cobrado}
+                          </strong>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {vista === 'pagos' && (
+                <div className="card">
+                  <h2 className="card-header">Recepción y Conciliación de Pagos</h2>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!formPago.deuda_id || !formPago.cuenta_ingreso_id) return alert('Faltan datos clave.');
+                    
+                    let montoIngresado = parseFloat(formPago.monto_pagado);
+                    let montoFinalUSD = montoIngresado;
+
+                    if (formPago.moneda_pago === 'Bs') {
+                      if (!rate || !rate.rate_bcv) return alert('No hay tasa BCV activa para realizar la conversión.');
+                      montoFinalUSD = montoIngresado / Number(rate.rate_bcv);
+                    }
+
+                    const cuentaDestino = cuentas.find(c => c.id === formPago.cuenta_ingreso_id); 
+
+                    const { error: errPago } = await supabase.from('pagos_recibidos').insert([{ 
+                      deuda_id: formPago.deuda_id, 
+                      cuenta_ingreso_id: formPago.cuenta_ingreso_id, 
+                      monto_pagado: montoFinalUSD, 
+                      monto_original: montoIngresado, 
+                      moneda_pago: formPago.moneda_pago,
+                      referencia: formPago.referencia, 
+                      fecha_pago: formPago.fecha_pago 
+                    }]);
+
+                    if (errPago) return alert('Error al registrar pago.');
+                    
+                    await supabase.from('deudas_mensuales').update({ estado: 'Pagada' }).eq('id', formPago.deuda_id);
+                    if (cuentaDestino) {
+                      await supabase.from('cuentas').update({ saldo_actual: cuentaDestino.saldo_actual + montoIngresado }).eq('id', formPago.cuenta_ingreso_id);
+                    }
+                    
+                    alert('Pago registrado, convertido y saldos actualizados con éxito.');
+                    setFormPago({ deuda_id: '', cuenta_ingreso_id: '', monto_pagado: '', moneda_pago: 'USD', referencia: '', fecha_pago: '' });
+                    cargarPagos(); cargarDeudas(); cargarCuentas();
+                  }}>
+                    <div className="grid-form">
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Factura de Unidad a Pagar</label>
+                        <select 
+                          className="form-control" 
+                          name="deuda_id" 
+                          value={formPago.deuda_id} 
+                          onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                          required
+                        >
+                          <option value="">-- Seleccione la Deuda --</option>
+                          {deudas.filter(d => d.estado === 'Pendiente').map(d => (
+                            <option key={d.id} value={d.id}>
+                              {buscarLocal(d.propietario_id)} - {d.mes_facturacion} ($ {d.monto_cobrado})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Moneda en la que Paga</label>
+                        <select 
+                          className="form-control" 
+                          name="moneda_pago" 
+                          value={formPago.moneda_pago} 
+                          onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })}
+                        >
+                          <option value="USD">Dólares ($)</option>
+                          <option value="Bs">Bolívares (Bs.) {rate ? `(Tasa BCV: ${rate.rate_bcv})` : ''}</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Monto Depositado ({formPago.moneda_pago === 'Bs' ? 'Bs.' : '$'})</label>
+                        <input 
+                          type="number" 
+                          className="form-control" 
+                          name="monto_pagado" 
+                          step="0.01" 
+                          value={formPago.monto_pagado} 
+                          onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Cuenta Destino (Ingreso a)</label>
+                        <select 
+                          className="form-control" 
+                          name="cuenta_ingreso_id" 
+                          value={formPago.cuenta_ingreso_id} 
+                          onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                          required
+                        >
+                          <option value="">-- Seleccione la Cuenta --</option>
+                          {cuentas.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label>Nro. Referencia / Zelle</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          name="referencia" 
+                          value={formPago.referencia} 
+                          onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Fecha de Operación</label>
+                        <input 
+                          type="date" 
+                          className="form-control" 
+                          name="fecha_pago" 
+                          value={formPago.fecha_pago} 
+                          onChange={(e) => setFormPago({ ...formPago, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" className="btn btn-success mt-4">Procesar y Conciliar Pago</button>
+                  </form>
+
+                  <h3 className="card-header" style={{ marginTop: '40px' }}>Últimos Ingresos</h3>
+                  <ul className="list-group">
+                    {pagos.map(pago => {
+                      const cuentaDestino = cuentas.find(c => c.id === pago.cuenta_ingreso_id);
+                      const mon = cuentaDestino ? cuentaDestino.moneda : 'USD';
+                      return (
+                        <li key={pago.id} className="list-item">
+                          <div>
+                            <strong>Ref: {pago.referencia}</strong>
+                            <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                              {pago.fecha_pago} | Ingresó a: {buscarCuenta(pago.cuenta_ingreso_id)} {pago.moneda_pago ? `(${pago.moneda_pago})` : ''}
+                            </span>
+                          </div>
+                          <strong style={{ color: 'var(--success)', fontSize: '1.2rem' }}>
+                            + {renderMoneda(mon)} {pago.monto_pagado}
+                          </strong>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {userRole === 'administrador' && vista === 'gastos' && (
+                <div className="card">
+                  <h2 className="card-header">Registro de Egresos Operativos</h2>
+                  <form onSubmit={guardarGasto}>
+                    <div className="grid-form">
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Cuenta de Origen (Pago desde)</label>
+                        <select 
+                          className="form-control" 
+                          name="cuenta_origen_id" 
+                          value={formGasto.cuenta_origen_id} 
+                          onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                          required
+                        >
+                          <option value="">-- Seleccione de dónde sale el dinero --</option>
+                          {cuentas.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre_cuenta} (Disp: {renderMoneda(c.moneda)} {c.saldo_actual})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Concepto del Gasto</label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          name="concepto" 
+                          placeholder="Ej: Pago de conserjería, Reparación de bomba" 
+                          value={formGasto.concepto} 
+                          onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Monto a Descontar</label>
+                        <input 
+                          type="number" 
+                          className="form-control" 
+                          name="monto" 
+                          step="0.01" 
+                          value={formGasto.monto} 
+                          onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Fecha de Operación</label>
+                        <input 
+                          type="date" 
+                          className="form-control" 
+                          name="fecha_gasto" 
+                          value={formGasto.fecha_gasto} 
+                          onChange={(e) => setFormGasto({ ...formGasto, [e.target.name]: e.target.value })} 
+                          required 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" className="btn btn-warning mt-4">Registrar Egreso</button>
+                  </form>
+
+                  <h3 className="card-header" style={{ marginTop: '40px' }}>Historial de Salidas</h3>
+                  <ul className="list-group">
+                    {gastos.map(gasto => {
+                      const cuentaOrigen = cuentas.find(c => c.id === gasto.cuenta_origen_id);
+                      const mon = cuentaOrigen ? cuentaOrigen.moneda : 'USD';
+                      return (
+                        <li key={gasto.id} className="list-item">
+                          <div>
+                            <strong>{gasto.concepto}</strong>
+                            <span className="text-muted" style={{ display: 'block', marginTop: '4px' }}>
+                              {gasto.fecha_gasto} | Desde: {buscarCuenta(gasto.cuenta_origen_id)}
+                            </span>
+                          </div>
+                          <strong style={{ color: 'var(--danger)', fontSize: '1.2rem' }}>
+                            - {renderMoneda(mon)} {gasto.monto}
+                          </strong>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
 
         </div>
       </main>
 
       <nav className="bottom-nav">
-        <button className={`bottom-nav-item ${vista === 'propietarios' ? 'active' : ''}`} onClick={() => setVista('propietarios')}>
-          <span className="icon">🏢</span>
-          <span>Locales</span>
-        </button>
-        <button className={`bottom-nav-item ${vista === 'cuentas' ? 'active' : ''}`} onClick={() => setVista('cuentas')}>
-          <span className="icon">🏦</span>
-          <span>Cuentas</span>
-        </button>
-        <button className={`bottom-nav-item ${vista === 'facturacion' ? 'active' : ''}`} onClick={() => setVista('facturacion')}>
-          <span className="icon">📄</span>
-          <span>Cargos</span>
-        </button>
-        <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
-          <span className="icon">💵</span>
-          <span>Pagos</span>
-        </button>
-        <button className={`bottom-nav-item ${vista === 'gastos' ? 'active' : ''}`} onClick={() => setVista('gastos')}>
-          <span className="icon">📉</span>
-          <span>Egresos</span>
-        </button>
+        {userRole === 'administrador' ? (
+          <>
+            <button className={`bottom-nav-item ${vista === 'propietarios' ? 'active' : ''}`} onClick={() => setVista('propietarios')}>
+              <span className="icon">🏢</span>
+              <span>Locales</span>
+            </button>
+            <button className={`bottom-nav-item ${vista === 'cuentas' ? 'active' : ''}`} onClick={() => setVista('cuentas')}>
+              <span className="icon">🏦</span>
+              <span>Cuentas</span>
+            </button>
+            <button className={`bottom-nav-item ${vista === 'facturacion' ? 'active' : ''}`} onClick={() => setVista('facturacion')}>
+              <span className="icon">📄</span>
+              <span>Cargos</span>
+            </button>
+            <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
+              <span className="icon">💵</span>
+              <span>Pagos</span>
+            </button>
+            <button className={`bottom-nav-item ${vista === 'gastos' ? 'active' : ''}`} onClick={() => setVista('gastos')}>
+              <span className="icon">📉</span>
+              <span>Egresos</span>
+            </button>
+          </>
+        ) : (
+          <button className={`bottom-nav-item ${vista === 'pagos' ? 'active' : ''}`} onClick={() => setVista('pagos')}>
+            <span className="icon">💵</span>
+            <span>Reportar Pago</span>
+          </button>
+        )}
       </nav>
     </div>
   )
