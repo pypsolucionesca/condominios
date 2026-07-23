@@ -55,7 +55,7 @@ export default function Restablecer() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <h1>Enlace no válido</h1>
+          <h1>Enlace No Válido</h1>
           <div className="alerta alerta-error">
             El enlace expiró o ya fue utilizado. Solicite uno nuevo desde la pantalla de
             inicio de sesión.
@@ -72,7 +72,7 @@ export default function Restablecer() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <h1>Definir contraseña</h1>
+          <h1>Definir Contraseña</h1>
           <p>Elija una contraseña para acceder al sistema</p>
         </div>
 

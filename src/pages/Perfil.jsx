@@ -139,7 +139,7 @@ export default function Perfil() {
     <>
       <div className="pagina-cabecera">
         <div>
-          <h1>Mi perfil</h1>
+          <h1>Mi Perfil</h1>
           <p className="texto-ayuda">{usuario?.email}</p>
         </div>
       </div>

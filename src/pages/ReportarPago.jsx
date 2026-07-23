@@ -164,7 +164,7 @@ export default function ReportarPago() {
     <>
       <div className="pagina-cabecera">
         <div>
-          <h1>Reportar pago</h1>
+          <h1>Reportar Pago</h1>
           <p className="texto-ayuda">
             Informe un pago realizado para que la administración lo verifique
           </p>

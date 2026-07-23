@@ -122,7 +122,7 @@ export default function PanelControl() {
     <>
       <div className="pagina-cabecera">
         <div>
-          <h1>Panel de control</h1>
+          <h1>Panel de Control</h1>
           <p className="texto-ayuda">
             Tasa del día: {datos.tasa_actual ? `Bs. ${fmtNumero(datos.tasa_actual)}` : 'sin registrar'}
             {datos.tasa_fecha && ` (${fmtFecha(datos.tasa_fecha)})`}

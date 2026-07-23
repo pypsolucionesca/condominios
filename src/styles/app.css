@@ -157,7 +157,7 @@ html, body {
   flex: 1; margin-left: 280px;
   padding: 30px; min-width: 0;
 }
-.content-wrapper { width: 100%; max-width: 1100px; margin: 0 auto; }
+.content-wrapper { width: 100%; max-width: 1280px; margin: 0 auto; }
 
 .header-movil { display: none; }
 .nav-inferior { display: none; }
@@ -973,7 +973,7 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 
 .campana-escritorio {
   display: flex; justify-content: flex-end;
-  max-width: 1100px; margin: 0 auto 8px;
+  max-width: 1280px; margin: 0 auto 8px;
 }
 
 .campana-panel {
@@ -1141,3 +1141,48 @@ textarea.form-control { resize: vertical; font-family: inherit; }
   .grid-indicadores { grid-template-columns: 1fr; }
   .indicador-valor { font-size: 1.3rem; }
 }
+
+/* =====================================================================
+   Ancho adaptativo por resolución
+
+   El contenido se extiende hasta cerca de los bordes en pantallas
+   grandes. Se conserva un margen lateral cómodo y un tope alto para
+   que las líneas de texto no se vuelvan ilegibles en monitores muy
+   anchos, pero sin desperdiciar espacio como antes.
+   ===================================================================== */
+
+@media (min-width: 1024px) {
+  .content-wrapper,
+  .campana-escritorio { max-width: 100%; }
+  .main-content { padding: 28px 32px; }
+}
+
+@media (min-width: 1400px) {
+  .main-content { padding: 32px 44px; }
+  .grid-indicadores { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (min-width: 1800px) {
+  .content-wrapper,
+  .campana-escritorio { max-width: 1720px; }
+  .main-content { padding: 36px 56px; }
+  .card { padding: 30px; }
+}
+
+@media (min-width: 2200px) {
+  .content-wrapper,
+  .campana-escritorio { max-width: 2000px; }
+  .pagina-cabecera h1 { font-size: 1.7rem; }
+}
+
+/* Los formularios conservan un ancho legible: un campo de texto de
+   1700px no ayuda a escribir, solo separa la etiqueta del contenido.
+   Las tablas y listados sí aprovechan todo el espacio. */
+@media (min-width: 1200px) {
+  .card .grid-form { max-width: 1000px; }
+  .card > form > .form-group,
+  .card > form > .checkbox-linea { max-width: 680px; }
+  .barra-filtros { max-width: 1000px; }
+}
+
+.tabla-scroll, .lista-unidades, .grid-cuentas, .list-group { max-width: none; }

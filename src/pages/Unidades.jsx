@@ -267,6 +267,60 @@ export default function Unidades() {
     })
   }
 
+  const eliminar = async (u) => {
+    setError(null)
+    try {
+      const { data, error: err } = await supabase.rpc('unit_can_delete', {
+        p_unit_id: u.id,
+      })
+      if (err) throw err
+
+      if (!data.puede) {
+        setConfirmacion({
+          titulo: `No se puede eliminar ${u.code}`,
+          mensaje: data.motivo,
+          textoConfirmar: 'Desactivar en su lugar',
+          peligro: true,
+          accion: async () => {
+            const { error: e2 } = await supabase
+              .from('units')
+              .update({ is_active: false })
+              .eq('id', u.id)
+            setConfirmacion(null)
+            if (e2) setError(mensajeError(e2))
+            else {
+              setAviso(`${u.code} desactivada.`)
+              cargar()
+            }
+          },
+        })
+        return
+      }
+
+      setConfirmacion({
+        titulo: `Eliminar ${u.code}`,
+        mensaje:
+          'Se borrará definitivamente. ' +
+          (data.motivo || 'La unidad no tiene historial financiero.'),
+        peligro: true,
+        textoConfirmar: 'Eliminar',
+        accion: async () => {
+          setEnviando(true)
+          const { error: e2 } = await supabase.rpc('delete_unit', { p_unit_id: u.id })
+          setEnviando(false)
+          setConfirmacion(null)
+          if (e2) setError(mensajeError(e2))
+          else {
+            setAviso(`${u.code} eliminada. Alícuotas recalculadas.`)
+            cargar()
+          }
+        },
+      })
+    } catch (err) {
+      setError(mensajeError(err))
+    }
+  }
+
   const cambiarEstado = (u) => {
     const desactivar = u.is_active
     setConfirmacion({
@@ -299,7 +353,7 @@ export default function Unidades() {
     <>
       <div className="pagina-cabecera">
         <div>
-          <h1>Apartamentos y locales</h1>
+          <h1>Apartamentos y Locales</h1>
           <p className="texto-ayuda">
             {activas.length} unidades activas
             {areaTotal > 0 && ` · ${fmtNumero(areaTotal)} m² totales`}
@@ -450,6 +504,13 @@ export default function Unidades() {
                           texto: u.is_active ? 'Desactivar' : 'Reactivar',
                           onClick: () => cambiarEstado(u),
                           peligro: u.is_active,
+                        },
+                        {
+                          icono: '🗑️',
+                          texto: 'Eliminar',
+                          onClick: () => eliminar(u),
+                          peligro: true,
+                          titulo: 'Solo si no tiene historial financiero',
                         },
                       ]}
                     />
