@@ -42,6 +42,29 @@ export const fmtMesAno = (f) => {
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+/** Fecha y hora en zona horaria de Venezuela, para sellos de actualización. */
+export const fmtHoraLocal = (f) => {
+  if (!f) return '—'
+  const d = new Date(f)
+  if (isNaN(d)) return String(f)
+
+  const hoyStr = new Date().toDateString()
+  const hora = d.toLocaleTimeString('es-VE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Caracas',
+  })
+
+  // Si es de hoy basta la hora; si no, se antepone la fecha
+  if (d.toDateString() === hoyStr) return `Hoy ${hora}`
+
+  return `${d.toLocaleDateString('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'America/Caracas',
+  })} ${hora}`
+}
+
 export const hoy = () => new Date().toISOString().slice(0, 10)
 
 export const TIPOS_UNIDAD = [

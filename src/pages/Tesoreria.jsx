@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtMoneda, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO } from '../lib/formato'
-import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador } from '../components/UI'
+import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen } from '../components/UI'
 
 const PESTANAS = [
   { id: 'cuentas', texto: 'Cuentas' },
@@ -49,14 +49,35 @@ export default function Tesoreria() {
     invoice_ref: '',
   })
 
-  const [formPersona, setFormPersona] = useState({
+  const FORM_PERSONA = {
     kind: 'empleado',
     full_name: '',
     national_id: '',
     phone: '',
+    email: '',
+    address: '',
     role_title: '',
     hired_at: '',
-  })
+    salary_amount: '',
+    salary_currency: 'USD',
+    salary_period: 'semanal',
+    bank_1_name: '',
+    bank_1_account: '',
+    bank_1_holder: '',
+    bank_2_name: '',
+    bank_2_account: '',
+    bank_2_holder: '',
+    mobile_1_bank: '',
+    mobile_1_phone: '',
+    mobile_1_id: '',
+    mobile_2_bank: '',
+    mobile_2_phone: '',
+    mobile_2_id: '',
+  }
+
+  const [formPersona, setFormPersona] = useState(FORM_PERSONA)
+  const [fotoPersona, setFotoPersona] = useState(null)
+  const [pestanaPersona, setPestanaPersona] = useState('datos')
 
   const [formCompromiso, setFormCompromiso] = useState({
     payee_id: '',
@@ -70,6 +91,25 @@ export default function Tesoreria() {
   })
 
   const [historial, setHistorial] = useState({ persona: null, pagos: [], desde: '', hasta: '' })
+
+  const [pagoEmpleado, setPagoEmpleado] = useState({
+    persona: null,
+    amount: '',
+    currency: 'USD',
+    payment_date: hoy(),
+    account_id: '',
+    concepto: '',
+  })
+
+  const [formMovimiento, setFormMovimiento] = useState({
+    account_id: '',
+    kind: 'comision_bancaria',
+    description: '',
+    amount: '',
+    date: hoy(),
+  })
+
+  const [saldoInicial, setSaldoInicial] = useState({ cuenta: null, monto: '' })
 
   const [pagoCompromiso, setPagoCompromiso] = useState({
     id: null,
@@ -219,26 +259,60 @@ export default function Tesoreria() {
 
     setEnviando(true)
     try {
+      const limpio = (v) => (typeof v === 'string' ? v.trim() || null : v ?? null)
+
       const datos = {
         kind: formPersona.kind,
         full_name: formPersona.full_name.trim(),
-        national_id: formPersona.national_id.trim() || null,
-        phone: formPersona.phone.trim() || null,
-        role_title: formPersona.role_title.trim() || null,
+        national_id: limpio(formPersona.national_id),
+        phone: limpio(formPersona.phone),
+        email: limpio(formPersona.email),
+        address: limpio(formPersona.address),
+        role_title: limpio(formPersona.role_title),
         hired_at: formPersona.hired_at || null,
+        salary_amount: formPersona.salary_amount ? Number(formPersona.salary_amount) : null,
+        salary_currency: formPersona.salary_currency,
+        salary_period: formPersona.salary_amount ? formPersona.salary_period : null,
+        bank_1_name: limpio(formPersona.bank_1_name),
+        bank_1_account: limpio(formPersona.bank_1_account),
+        bank_1_holder: limpio(formPersona.bank_1_holder),
+        bank_2_name: limpio(formPersona.bank_2_name),
+        bank_2_account: limpio(formPersona.bank_2_account),
+        bank_2_holder: limpio(formPersona.bank_2_holder),
+        mobile_1_bank: limpio(formPersona.mobile_1_bank),
+        mobile_1_phone: limpio(formPersona.mobile_1_phone),
+        mobile_1_id: limpio(formPersona.mobile_1_id),
+        mobile_2_bank: limpio(formPersona.mobile_2_bank),
+        mobile_2_phone: limpio(formPersona.mobile_2_phone),
+        mobile_2_id: limpio(formPersona.mobile_2_id),
       }
+
+      let personaId = editando?.id
 
       if (editando) {
         const { error: err } = await supabase.from('payees').update(datos).eq('id', editando.id)
         if (err) throw err
       } else {
-        const { error: err } = await supabase
+        const { data, error: err } = await supabase
           .from('payees')
           .insert([{ ...datos, condominium_id: perfil.condominium_id }])
+          .select('id')
+          .single()
         if (err) throw err
+        personaId = data.id
+      }
+
+      if (fotoPersona && personaId) {
+        const { subirImagen } = await import('../lib/imagenes')
+        const { url } = await subirImagen(fotoPersona, 'logos', `personal/${personaId}`, {
+          maxAncho: 400,
+          maxAlto: 400,
+        })
+        await supabase.from('payees').update({ photo_url: url }).eq('id', personaId)
       }
 
       setAviso(editando ? 'Datos actualizados.' : 'Registro creado.')
+      setFotoPersona(null)
       cerrarPanel()
       cargar()
     } catch (err) {
@@ -315,6 +389,134 @@ export default function Tesoreria() {
       if (err) throw err
 
       setAviso('Pago registrado y próximo vencimiento actualizado.')
+      cerrarPanel()
+      cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // ------------------------------------------------------- pago a empleado
+
+  const abrirPagoEmpleado = (persona) => {
+    const periodo = { diario: 'Jornada', semanal: 'Semana', quincenal: 'Quincena', mensual: 'Mes' }
+    setPagoEmpleado({
+      persona,
+      amount: persona.salary_amount ? String(persona.salary_amount) : '',
+      currency: persona.salary_currency || 'USD',
+      payment_date: hoy(),
+      account_id: '',
+      concepto: persona.salary_period
+        ? `${periodo[persona.salary_period] || 'Pago'} · ${persona.role_title || persona.full_name}`
+        : `Pago a ${persona.full_name}`,
+    })
+    setPanel('pagar-empleado')
+  }
+
+  const registrarPagoEmpleado = async (e) => {
+    e.preventDefault()
+    setError(null)
+
+    const monto = Number(pagoEmpleado.amount)
+    if (!monto || monto <= 0) return setError('Indique el monto a pagar.')
+    if (!pagoEmpleado.account_id) return setError('Seleccione la cuenta de origen.')
+
+    setEnviando(true)
+    try {
+      const { data: idGasto, error: err } = await supabase.rpc('register_expense', {
+        p_account_id: pagoEmpleado.account_id,
+        p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
+        p_amount: monto,
+        p_currency: pagoEmpleado.currency,
+        p_expense_date: pagoEmpleado.payment_date,
+        p_category_id: null,
+        p_supplier: pagoEmpleado.persona.full_name,
+        p_invoice_ref: null,
+        p_receipt_url: null,
+      })
+      if (err) throw err
+
+      await supabase
+        .from('expenses')
+        .update({ payee_id: pagoEmpleado.persona.id })
+        .eq('id', idGasto)
+
+      setAviso(`Pago registrado a ${pagoEmpleado.persona.full_name}.`)
+      cerrarPanel()
+      cargar()
+
+      // Se ofrece el recibo de inmediato: es el momento en que se necesita
+      const { data: gasto } = await supabase
+        .from('expenses')
+        .select('*, accounts:account_id (name)')
+        .eq('id', idGasto)
+        .single()
+
+      if (gasto) {
+        setTimeout(() => descargarRecibo({ ...gasto, payee_id: pagoEmpleado.persona.id }), 400)
+      }
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // ------------------------------------------- movimientos y saldo inicial
+
+  const guardarMovimiento = async (e) => {
+    e.preventDefault()
+    setError(null)
+
+    if (!formMovimiento.account_id) return setError('Seleccione la cuenta.')
+    if (!formMovimiento.description.trim()) return setError('Describa el movimiento.')
+    const monto = Number(formMovimiento.amount)
+    if (!monto || monto <= 0) return setError('El monto debe ser mayor que cero.')
+
+    setEnviando(true)
+    try {
+      const { error: err } = await supabase.rpc('register_movement', {
+        p_account_id: formMovimiento.account_id,
+        p_kind: formMovimiento.kind,
+        p_description: formMovimiento.description.trim(),
+        p_amount: monto,
+        p_date: formMovimiento.date,
+        p_note: null,
+      })
+      if (err) throw err
+
+      setAviso('Movimiento registrado.')
+      setFormMovimiento({
+        account_id: '',
+        kind: 'comision_bancaria',
+        description: '',
+        amount: '',
+        date: hoy(),
+      })
+      cerrarPanel()
+      cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  const guardarSaldoInicial = async (e) => {
+    e.preventDefault()
+    setError(null)
+
+    setEnviando(true)
+    try {
+      const { error: err } = await supabase.rpc('set_opening_balance', {
+        p_account_id: saldoInicial.cuenta.id,
+        p_amount: Number(saldoInicial.monto) || 0,
+      })
+      if (err) throw err
+
+      setAviso('Saldo inicial actualizado.')
       cerrarPanel()
       cargar()
     } catch (err) {
@@ -470,23 +672,32 @@ export default function Tesoreria() {
           <div className="card-header-flex">
             <h2>Cuentas</h2>
             {esAdmin && (
-              <button
-                className="btn btn-primary btn-auto"
-                onClick={() => {
-                  setEditando(null)
-                  setFormCuenta({
-                    name: '',
-                    kind: 'caja',
-                    currency: 'USD',
-                    bank_name: '',
-                    account_number: '',
-                    opening_balance: '',
-                  })
-                  setPanel('cuenta')
-                }}
-              >
-                + Nueva cuenta
-              </button>
+              <div className="grupo-botones">
+                <button
+                  className="btn btn-secundario btn-accion"
+                  onClick={() => setPanel('movimiento')}
+                  disabled={cuentas.length === 0}
+                >
+                  Comisión o ajuste
+                </button>
+                <button
+                  className="btn btn-primary btn-accion"
+                  onClick={() => {
+                    setEditando(null)
+                    setFormCuenta({
+                      name: '',
+                      kind: 'caja',
+                      currency: 'USD',
+                      bank_name: '',
+                      account_number: '',
+                      opening_balance: '',
+                    })
+                    setPanel('cuenta')
+                  }}
+                >
+                  + Nueva cuenta
+                </button>
+              </div>
             )}
           </div>
 
@@ -505,6 +716,14 @@ export default function Tesoreria() {
                     {esAdmin && (
                       <MenuAcciones
                         acciones={[
+                          {
+                            icono: '💰',
+                            texto: 'Saldo inicial',
+                            onClick: () => {
+                              setSaldoInicial({ cuenta: c, monto: String(c.opening_balance || 0) })
+                              setPanel('saldo-inicial')
+                            },
+                          },
                           {
                             icono: '✏️',
                             texto: 'Editar',
@@ -546,7 +765,7 @@ export default function Tesoreria() {
             <h2>Gastos</h2>
             {esAdmin && (
               <button
-                className="btn btn-primary btn-auto"
+                className="btn btn-primary btn-accion"
                 onClick={() => {
                   setEditando(null)
                   setPanel('gasto')
@@ -622,7 +841,7 @@ export default function Tesoreria() {
             <h2>Personal y proveedores</h2>
             {esAdmin && (
               <button
-                className="btn btn-primary btn-auto"
+                className="btn btn-primary btn-accion"
                 onClick={() => {
                   setEditando(null)
                   setFormPersona({
@@ -651,19 +870,39 @@ export default function Tesoreria() {
             <ul className="list-group">
               {personal.map((p) => (
                 <li key={p.id} className="list-item">
+                  {p.photo_url ? (
+                    <img src={p.photo_url} alt="" className="persona-avatar" />
+                  ) : (
+                    <span className="usuario-avatar-vacio" aria-hidden="true">
+                      {p.kind === 'empleado' ? '👷' : '🏪'}
+                    </span>
+                  )}
                   <div>
                     <strong>{p.full_name}</strong>
                     <small>
                       {etiqueta(p.kind)}
                       {p.role_title ? ` · ${p.role_title}` : ''}
                       {p.phone ? ` · ${p.phone}` : ''}
+                      {p.email ? ` · ${p.email}` : ''}
                     </small>
+                    {p.salary_amount && (
+                      <small>
+                        {fmtMoneda(p.salary_amount, p.salary_currency)} ·{' '}
+                        {etiqueta(p.salary_period)}
+                      </small>
+                    )}
                   </div>
                   <div className="list-item-derecha">
                     {!p.is_active && <span className="chip chip-inactivo">Inactivo</span>}
                     {esAdmin && (
                       <MenuAcciones
                         acciones={[
+                          {
+                            icono: '💵',
+                            texto: 'Registrar pago',
+                            oculto: !p.is_active,
+                            onClick: () => abrirPagoEmpleado(p),
+                          },
                           {
                             icono: '📋',
                             texto: 'Ver historial de pagos',
@@ -715,7 +954,7 @@ export default function Tesoreria() {
             <h2>Pagos recurrentes</h2>
             {esAdmin && (
               <button
-                className="btn btn-primary btn-auto"
+                className="btn btn-primary btn-accion"
                 onClick={() => {
                   setEditando(null)
                   setFormCompromiso({
@@ -1044,73 +1283,338 @@ export default function Tesoreria() {
 
       <Panel
         abierto={panel === 'persona'}
-        titulo={editando ? 'Editar registro' : 'Personal o proveedor'}
+        titulo={editando ? `Editar · ${editando.full_name}` : 'Personal o proveedor'}
         onCerrar={cerrarPanel}
+        ancho={620}
       >
+        <div className="pestanas">
+          {[
+            { id: 'datos', texto: 'Datos' },
+            { id: 'pago', texto: 'Formas de pago' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`pestana ${pestanaPersona === t.id ? 'activa' : ''}`}
+              onClick={() => setPestanaPersona(t.id)}
+            >
+              {t.texto}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={guardarPersona}>
-          <div className="grid-form">
-            <div className="form-group">
-              <label>Tipo *</label>
-              <select
-                className="form-control"
-                value={formPersona.kind}
-                onChange={(e) => setFormPersona({ ...formPersona, kind: e.target.value })}
-              >
-                {TIPOS_BENEFICIARIO.map((t) => (
-                  <option key={t.valor} value={t.valor}>
-                    {t.etiqueta}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Nombre completo *</label>
-              <input
-                className="form-control"
-                value={formPersona.full_name}
-                onChange={(e) => setFormPersona({ ...formPersona, full_name: e.target.value })}
+          {pestanaPersona === 'datos' && (
+            <>
+              <SelectorImagen
+                etiqueta="Foto"
+                valorActual={editando?.photo_url}
+                onSeleccion={setFotoPersona}
+                redonda
+                ayuda="Se comprime a WebP automáticamente."
               />
-            </div>
 
-            <div className="form-group">
-              <label>Cédula / RIF</label>
-              <input
-                className="form-control"
-                value={formPersona.national_id}
-                onChange={(e) => setFormPersona({ ...formPersona, national_id: e.target.value })}
-              />
-            </div>
+              <div className="grid-form">
+                <div className="form-group">
+                  <label>Tipo *</label>
+                  <select
+                    className="form-control"
+                    value={formPersona.kind}
+                    onChange={(e) => setFormPersona({ ...formPersona, kind: e.target.value })}
+                  >
+                    {TIPOS_BENEFICIARIO.map((t) => (
+                      <option key={t.valor} value={t.valor}>
+                        {t.etiqueta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div className="form-group">
-              <label>Teléfono</label>
-              <input
-                className="form-control"
-                value={formPersona.phone}
-                onChange={(e) => setFormPersona({ ...formPersona, phone: e.target.value })}
-              />
-            </div>
+                <div className="form-group">
+                  <label>Nombre completo *</label>
+                  <input
+                    className="form-control"
+                    value={formPersona.full_name}
+                    onChange={(e) => setFormPersona({ ...formPersona, full_name: e.target.value })}
+                  />
+                </div>
 
-            <div className="form-group">
-              <label>Cargo o servicio</label>
-              <input
-                className="form-control"
-                value={formPersona.role_title}
-                onChange={(e) => setFormPersona({ ...formPersona, role_title: e.target.value })}
-                placeholder="Mantenimiento de áreas comunes"
-              />
-            </div>
+                <div className="form-group">
+                  <label>Cédula / RIF</label>
+                  <input
+                    className="form-control"
+                    value={formPersona.national_id}
+                    onChange={(e) =>
+                      setFormPersona({ ...formPersona, national_id: e.target.value })
+                    }
+                  />
+                </div>
 
-            <div className="form-group">
-              <label>Fecha de ingreso</label>
-              <input
-                type="date"
-                className="form-control"
-                value={formPersona.hired_at}
-                onChange={(e) => setFormPersona({ ...formPersona, hired_at: e.target.value })}
-              />
-            </div>
-          </div>
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input
+                    className="form-control"
+                    value={formPersona.phone}
+                    onChange={(e) => setFormPersona({ ...formPersona, phone: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Correo electrónico</label>
+                  <input
+                    type="email"
+                    className="form-control"
+                    value={formPersona.email}
+                    onChange={(e) => setFormPersona({ ...formPersona, email: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Cargo o servicio</label>
+                  <input
+                    className="form-control"
+                    value={formPersona.role_title}
+                    onChange={(e) =>
+                      setFormPersona({ ...formPersona, role_title: e.target.value })
+                    }
+                    placeholder="Mantenimiento de áreas comunes"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Dirección</label>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  value={formPersona.address}
+                  onChange={(e) => setFormPersona({ ...formPersona, address: e.target.value })}
+                />
+              </div>
+
+              {formPersona.kind === 'empleado' && (
+                <>
+                  <div className="separador" />
+                  <h4 className="subtitulo">Remuneración</h4>
+
+                  <div className="grid-form">
+                    <div className="form-group">
+                      <label>Fecha de ingreso</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={formPersona.hired_at}
+                        onChange={(e) =>
+                          setFormPersona({ ...formPersona, hired_at: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Salario</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="form-control"
+                        value={formPersona.salary_amount}
+                        onChange={(e) =>
+                          setFormPersona({ ...formPersona, salary_amount: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Moneda</label>
+                      <select
+                        className="form-control"
+                        value={formPersona.salary_currency}
+                        onChange={(e) =>
+                          setFormPersona({ ...formPersona, salary_currency: e.target.value })
+                        }
+                      >
+                        <option value="USD">Dólares (USD)</option>
+                        <option value="VES">Bolívares (Bs.)</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Frecuencia de pago</label>
+                      <select
+                        className="form-control"
+                        value={formPersona.salary_period}
+                        onChange={(e) =>
+                          setFormPersona({ ...formPersona, salary_period: e.target.value })
+                        }
+                      >
+                        <option value="diario">Por días</option>
+                        <option value="semanal">Semanal</option>
+                        <option value="quincenal">Quincenal</option>
+                        <option value="mensual">Mensual</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <p className="texto-ayuda">
+                    El salario se usa para generar el pago con un clic. El sistema no calcula
+                    prestaciones, vacaciones ni retenciones de ley.
+                  </p>
+                </>
+              )}
+            </>
+          )}
+
+          {pestanaPersona === 'pago' && (
+            <>
+              <h4 className="subtitulo">Cuentas bancarias</h4>
+
+              <div className="bloque-cuenta">
+                <div className="grid-form">
+                  <div className="form-group">
+                    <label>Banco</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.bank_1_name}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, bank_1_name: e.target.value })
+                      }
+                      placeholder="Banesco"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Número de cuenta</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.bank_1_account}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, bank_1_account: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Titular</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.bank_1_holder}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, bank_1_holder: e.target.value })
+                      }
+                      placeholder="Si difiere del nombre"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bloque-cuenta">
+                <div className="grid-form">
+                  <div className="form-group">
+                    <label>Segundo banco</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.bank_2_name}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, bank_2_name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Número de cuenta</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.bank_2_account}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, bank_2_account: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Titular</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.bank_2_holder}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, bank_2_holder: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="separador" />
+              <h4 className="subtitulo">Pago móvil</h4>
+
+              <div className="bloque-cuenta">
+                <div className="grid-form">
+                  <div className="form-group">
+                    <label>Banco</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.mobile_1_bank}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, mobile_1_bank: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Teléfono</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.mobile_1_phone}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, mobile_1_phone: e.target.value })
+                      }
+                      placeholder="0414-1234567"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Cédula</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.mobile_1_id}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, mobile_1_id: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bloque-cuenta">
+                <div className="grid-form">
+                  <div className="form-group">
+                    <label>Segundo banco</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.mobile_2_bank}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, mobile_2_bank: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Teléfono</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.mobile_2_phone}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, mobile_2_phone: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Cédula</label>
+                    <input
+                      className="form-control"
+                      value={formPersona.mobile_2_id}
+                      onChange={(e) =>
+                        setFormPersona({ ...formPersona, mobile_2_id: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="panel-acciones">
             <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
@@ -1431,6 +1935,265 @@ export default function Tesoreria() {
             )}
           </>
         )}
+      </Panel>
+
+      {/* ------------------------------------------------ pago a empleado */}
+      <Panel
+        abierto={panel === 'pagar-empleado'}
+        titulo={`Pagar a ${pagoEmpleado.persona?.full_name || ''}`}
+        onCerrar={cerrarPanel}
+      >
+        {pagoEmpleado.persona && (
+          <form onSubmit={registrarPagoEmpleado}>
+            {pagoEmpleado.persona.salary_amount && (
+              <div className="detalle-pago">
+                <div>
+                  <small>Salario configurado</small>
+                  <strong>
+                    {fmtMoneda(
+                      pagoEmpleado.persona.salary_amount,
+                      pagoEmpleado.persona.salary_currency
+                    )}
+                  </strong>
+                </div>
+                <div>
+                  <small>Frecuencia</small>
+                  <strong>{etiqueta(pagoEmpleado.persona.salary_period)}</strong>
+                </div>
+              </div>
+            )}
+
+            {(pagoEmpleado.persona.bank_1_name || pagoEmpleado.persona.mobile_1_phone) && (
+              <div className="datos-cobro">
+                <strong>Formas de pago registradas</strong>
+                {pagoEmpleado.persona.bank_1_name && (
+                  <div>
+                    {pagoEmpleado.persona.bank_1_name} · {pagoEmpleado.persona.bank_1_account}
+                  </div>
+                )}
+                {pagoEmpleado.persona.bank_2_name && (
+                  <div>
+                    {pagoEmpleado.persona.bank_2_name} · {pagoEmpleado.persona.bank_2_account}
+                  </div>
+                )}
+                {pagoEmpleado.persona.mobile_1_phone && (
+                  <div>
+                    Pago móvil · {pagoEmpleado.persona.mobile_1_bank} ·{' '}
+                    {pagoEmpleado.persona.mobile_1_phone}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label>Concepto *</label>
+              <input
+                className="form-control"
+                value={pagoEmpleado.concepto}
+                onChange={(e) => setPagoEmpleado({ ...pagoEmpleado, concepto: e.target.value })}
+              />
+            </div>
+
+            <div className="grid-form">
+              <div className="form-group">
+                <label>Monto *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="form-control"
+                  value={pagoEmpleado.amount}
+                  onChange={(e) => setPagoEmpleado({ ...pagoEmpleado, amount: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Moneda *</label>
+                <select
+                  className="form-control"
+                  value={pagoEmpleado.currency}
+                  onChange={(e) => setPagoEmpleado({ ...pagoEmpleado, currency: e.target.value })}
+                >
+                  <option value="USD">Dólares (USD)</option>
+                  <option value="VES">Bolívares (Bs.)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Fecha *</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={pagoEmpleado.payment_date}
+                  onChange={(e) =>
+                    setPagoEmpleado({ ...pagoEmpleado, payment_date: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Cuenta de origen *</label>
+                <select
+                  className="form-control"
+                  value={pagoEmpleado.account_id}
+                  onChange={(e) =>
+                    setPagoEmpleado({ ...pagoEmpleado, account_id: e.target.value })
+                  }
+                >
+                  <option value="">Seleccione…</option>
+                  {cuentas
+                    .filter((c) => c.is_active)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} · {fmtMoneda(c.current_balance, c.currency)}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <p className="texto-ayuda">
+              Al registrar el pago se descargará el recibo para firma del beneficiario.
+            </p>
+
+            <div className="panel-acciones">
+              <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" disabled={enviando}>
+                {enviando ? 'Registrando…' : 'Pagar y generar recibo'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Panel>
+
+      {/* ------------------------------------------- comisiones y ajustes */}
+      <Panel
+        abierto={panel === 'movimiento'}
+        titulo="Comisión o ajuste de cuenta"
+        onCerrar={cerrarPanel}
+      >
+        <p className="texto-ayuda">
+          Para movimientos que no son gastos operativos: comisiones bancarias, ajustes de
+          arqueo o intereses.
+        </p>
+
+        <form onSubmit={guardarMovimiento}>
+          <div className="form-group">
+            <label>Cuenta *</label>
+            <select
+              className="form-control"
+              value={formMovimiento.account_id}
+              onChange={(e) => setFormMovimiento({ ...formMovimiento, account_id: e.target.value })}
+            >
+              <option value="">Seleccione…</option>
+              {cuentas
+                .filter((c) => c.is_active)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {fmtMoneda(c.current_balance, c.currency)}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Tipo de movimiento *</label>
+            <select
+              className="form-control"
+              value={formMovimiento.kind}
+              onChange={(e) => setFormMovimiento({ ...formMovimiento, kind: e.target.value })}
+            >
+              <option value="comision_bancaria">Comisión bancaria (resta)</option>
+              <option value="ajuste_negativo">Ajuste de arqueo · faltante (resta)</option>
+              <option value="ajuste_positivo">Ajuste de arqueo · sobrante (suma)</option>
+              <option value="interes_ganado">Intereses ganados (suma)</option>
+              <option value="otro">Otro (suma)</option>
+            </select>
+          </div>
+
+          <div className="grid-form">
+            <div className="form-group">
+              <label>Concepto *</label>
+              <input
+                className="form-control"
+                value={formMovimiento.description}
+                onChange={(e) =>
+                  setFormMovimiento({ ...formMovimiento, description: e.target.value })
+                }
+                placeholder="Mantenimiento de cuenta"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Monto *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="form-control"
+                value={formMovimiento.amount}
+                onChange={(e) => setFormMovimiento({ ...formMovimiento, amount: e.target.value })}
+              />
+              <small className="texto-ayuda">Siempre positivo; el tipo define el signo.</small>
+            </div>
+
+            <div className="form-group">
+              <label>Fecha *</label>
+              <input
+                type="date"
+                className="form-control"
+                value={formMovimiento.date}
+                onChange={(e) => setFormMovimiento({ ...formMovimiento, date: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="panel-acciones">
+            <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" disabled={enviando}>
+              {enviando ? 'Registrando…' : 'Registrar movimiento'}
+            </button>
+          </div>
+        </form>
+      </Panel>
+
+      {/* ---------------------------------------------------- saldo inicial */}
+      <Panel
+        abierto={panel === 'saldo-inicial'}
+        titulo={`Saldo inicial · ${saldoInicial.cuenta?.name || ''}`}
+        onCerrar={cerrarPanel}
+      >
+        <p className="texto-ayuda">
+          Fondos con los que se abrió la cuenta. Solo puede modificarse mientras no haya
+          movimientos registrados; después debe usarse un ajuste de arqueo.
+        </p>
+
+        <form onSubmit={guardarSaldoInicial}>
+          <div className="form-group">
+            <label>Saldo inicial ({saldoInicial.cuenta?.currency})</label>
+            <input
+              type="number"
+              step="0.01"
+              className="form-control"
+              value={saldoInicial.monto}
+              onChange={(e) => setSaldoInicial({ ...saldoInicial, monto: e.target.value })}
+              autoFocus
+            />
+          </div>
+
+          <div className="panel-acciones">
+            <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" disabled={enviando}>
+              {enviando ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </form>
       </Panel>
 
       <Confirmar

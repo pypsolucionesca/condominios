@@ -37,55 +37,100 @@ export function Panel({ abierto, titulo, onCerrar, children, ancho = 480 }) {
   )
 }
 
-/** Menú contextual de acciones por fila. */
+/**
+ * Menú contextual de acciones por fila.
+ *
+ * En escritorio se abre junto al botón, eligiendo el lado con espacio
+ * disponible. En móvil se convierte en hoja inferior: un menú flotante
+ * pequeño se sale de la pantalla o queda cortado por los bordes.
+ */
 export function MenuAcciones({ acciones }) {
   const [abierto, setAbierto] = useState(false)
+  const [lado, setLado] = useState('derecha')
   const ref = useRef(null)
+  const botonRef = useRef(null)
+
+  const esMovil = typeof window !== 'undefined' && window.innerWidth <= 768
 
   useEffect(() => {
     if (!abierto) return
+
     const fuera = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setAbierto(false)
     }
+    const esc = (e) => e.key === 'Escape' && setAbierto(false)
+
     document.addEventListener('mousedown', fuera)
-    return () => document.removeEventListener('mousedown', fuera)
-  }, [abierto])
+    document.addEventListener('keydown', esc)
+
+    if (esMovil) document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.removeEventListener('mousedown', fuera)
+      document.removeEventListener('keydown', esc)
+      document.body.style.overflow = ''
+    }
+  }, [abierto, esMovil])
+
+  const alternar = (e) => {
+    e.stopPropagation()
+
+    // Si no cabe a la derecha, se abre hacia la izquierda
+    if (!abierto && botonRef.current && !esMovil) {
+      const caja = botonRef.current.getBoundingClientRect()
+      const espacioDerecha = window.innerWidth - caja.right
+      setLado(espacioDerecha < 210 ? 'izquierda' : 'derecha')
+    }
+
+    setAbierto((v) => !v)
+  }
 
   const visibles = acciones.filter((a) => !a.oculto)
   if (!visibles.length) return null
 
+  const opciones = visibles.map((a, i) => (
+    <button
+      key={i}
+      className={`menu-opcion ${a.peligro ? 'peligro' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        setAbierto(false)
+        a.onClick()
+      }}
+      disabled={a.desactivado}
+      title={a.titulo}
+    >
+      {a.icono && <span aria-hidden="true">{a.icono}</span>}
+      {a.texto}
+    </button>
+  ))
+
   return (
     <div className="menu-acciones" ref={ref}>
       <button
+        ref={botonRef}
         className="menu-disparador"
-        onClick={(e) => {
-          e.stopPropagation()
-          setAbierto((v) => !v)
-        }}
+        onClick={alternar}
         aria-label="Acciones"
         aria-expanded={abierto}
       >
         ⋯
       </button>
-      {abierto && (
-        <div className="menu-lista">
-          {visibles.map((a, i) => (
-            <button
-              key={i}
-              className={`menu-opcion ${a.peligro ? 'peligro' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                setAbierto(false)
-                a.onClick()
-              }}
-              disabled={a.desactivado}
-              title={a.titulo}
-            >
-              {a.icono && <span aria-hidden="true">{a.icono}</span>}
-              {a.texto}
+
+      {abierto && esMovil && (
+        <div className="hoja-fondo" onClick={() => setAbierto(false)}>
+          <div className="hoja-inferior" onClick={(e) => e.stopPropagation()}>
+            <div className="hoja-asa" />
+            {opciones}
+            <button className="menu-opcion cancelar" onClick={() => setAbierto(false)}>
+              Cancelar
             </button>
-          ))}
+          </div>
         </div>
+      )}
+
+      {abierto && !esMovil && (
+        <div className={`menu-lista lado-${lado}`}>{opciones}</div>
       )}
     </div>
   )

@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtUSD, fmtNumero, fmtFecha, hoy } from '../lib/formato'
+import { fmtUSD, fmtNumero, fmtFecha, fmtHoraLocal, hoy } from '../lib/formato'
 import { Aviso, Cargador } from '../components/UI'
+
+const ORIGEN = {
+  'dolarapi-oficial': 'BCV automático',
+  'dolarapi-lista': 'BCV automático (respaldo)',
+  arrastre: 'Heredada del día anterior',
+  manual: 'Manual',
+  semilla_inicial: 'Manual',
+  semilla_migracion: 'Manual',
+}
 
 export default function Configuracion() {
   const { perfil, condominio, recargarPerfil } = useAuth()
@@ -10,6 +19,8 @@ export default function Configuracion() {
   const [form, setForm] = useState(null)
   const [tasa, setTasa] = useState({ rate_date: hoy(), rate_bcv: '' })
   const [tasaActual, setTasaActual] = useState(null)
+  const [salud, setSalud] = useState(null)
+  const [actualizando, setActualizando] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
@@ -27,18 +38,59 @@ export default function Configuracion() {
       show_finances_to_all: Boolean(condominio.show_finances_to_all),
       delinquency_visibility: condominio.delinquency_visibility || 'oculto',
       invoice_notes: condominio.invoice_notes || '',
+      auto_billing: Boolean(condominio.auto_billing),
+      auto_billing_day: condominio.auto_billing_day ?? 1,
     })
   }, [condominio])
 
+  const cargarTasa = async () => {
+    const [rT, rS] = await Promise.all([
+      supabase
+        .from('exchange_rates')
+        .select('rate_date, rate_bcv, rate_parallel, source, status')
+        .order('rate_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.rpc('rate_health'),
+    ])
+    setTasaActual(rT.data)
+    setSalud(rS.data)
+  }
+
   useEffect(() => {
-    supabase
-      .from('exchange_rates')
-      .select('rate_date, rate_bcv')
-      .order('rate_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setTasaActual(data))
+    cargarTasa()
   }, [])
+
+  const actualizarDesdeBCV = async () => {
+    setActualizando(true)
+    setError(null)
+    try {
+      const resp = await supabase.functions.invoke('actualizar-tasa', {
+        body: { origen: 'manual' },
+      })
+
+      if (resp.error) {
+        let detalle = resp.error.message
+        try {
+          const cuerpo = await resp.error.context?.json?.()
+          if (cuerpo?.error) {
+            detalle = cuerpo.mensaje || cuerpo.error
+          }
+        } catch {
+          /* el cuerpo no era JSON */
+        }
+        throw new Error(detalle)
+      }
+      if (resp.data?.error) throw new Error(resp.data.mensaje || resp.data.error)
+
+      setAviso(`Tasa actualizada: ${resp.data.mensaje}`)
+      cargarTasa()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setActualizando(false)
+    }
+  }
 
   const guardar = async (e) => {
     e.preventDefault()
@@ -67,6 +119,8 @@ export default function Configuracion() {
           show_finances_to_all: form.show_finances_to_all,
           delinquency_visibility: form.delinquency_visibility,
           invoice_notes: form.invoice_notes.trim() || null,
+          auto_billing: form.auto_billing,
+          auto_billing_day: Number(form.auto_billing_day) || 1,
         })
         .eq('id', perfil.condominium_id)
 
@@ -124,11 +178,28 @@ export default function Configuracion() {
 
       {/* ------------------------------------------------------ tasa BCV */}
       <div className="card">
-        <h2 className="card-header">Tasa de cambio</h2>
+        <div className="card-header-flex">
+          <h2>Tasa de cambio</h2>
+          <button
+            className="btn btn-primary btn-accion"
+            onClick={actualizarDesdeBCV}
+            disabled={actualizando}
+          >
+            {actualizando ? 'Consultando…' : 'Actualizar desde BCV'}
+          </button>
+        </div>
+
         <p className="texto-ayuda">
           Cada aviso, pago y gasto guarda la tasa del día en que se registró, de modo que los
           documentos históricos siempre pueden reconstruirse.
         </p>
+
+        {salud?.obsoleta && salud?.tasa && (
+          <Aviso tipo="aviso">
+            La última tasa es del {fmtFecha(salud.fecha)}, hace {salud.dias_antiguedad} días.
+            Los cobros en bolívares pueden calcularse con un valor desactualizado.
+          </Aviso>
+        )}
 
         {tasaActual && (
           <div className="fila-resumen" style={{ marginBottom: 18 }}>
@@ -137,11 +208,32 @@ export default function Configuracion() {
               <strong>Bs. {fmtNumero(tasaActual.rate_bcv)}</strong>
             </div>
             <div>
-              <small>Registrada el</small>
-              <strong>{fmtFecha(tasaActual.rate_date)}</strong>
+              <small>Fecha</small>
+              <strong className={salud?.es_de_hoy ? 'texto-exito' : ''}>
+                {fmtFecha(tasaActual.rate_date)}
+                {salud?.es_de_hoy && ' · hoy'}
+              </strong>
             </div>
+            {tasaActual.rate_parallel && (
+              <div>
+                <small>Paralela</small>
+                <strong>Bs. {fmtNumero(tasaActual.rate_parallel)}</strong>
+              </div>
+            )}
+            <div>
+              <small>Origen</small>
+              <strong>{ORIGEN[tasaActual.source] || tasaActual.source || 'Manual'}</strong>
+            </div>
+            {salud?.actualizada && (
+              <div>
+                <small>Última consulta</small>
+                <strong>{fmtHoraLocal(salud.actualizada)}</strong>
+              </div>
+            )}
           </div>
         )}
+
+        <h4 className="subtitulo">Registrar tasa manualmente</h4>
 
         <form onSubmit={guardarTasa}>
           <div className="grid-form">
@@ -167,7 +259,7 @@ export default function Configuracion() {
               />
             </div>
           </div>
-          <button className="btn btn-primary btn-auto" disabled={guardando}>
+          <button className="btn btn-secundario btn-accion" disabled={guardando}>
             Registrar tasa
           </button>
         </form>
@@ -231,6 +323,44 @@ export default function Configuracion() {
               </small>
             </div>
           </div>
+
+          <div className="separador" />
+
+          <label className="opcion-bloque">
+            <input
+              type="checkbox"
+              checked={form.auto_billing}
+              onChange={(e) => setForm({ ...form, auto_billing: e.target.checked })}
+            />
+            <div>
+              <strong>Emitir las cuotas automáticamente</strong>
+              <small>
+                El sistema generará los avisos del mes sin intervención. Recibirá una
+                notificación al hacerlo, y nunca duplica un período ya emitido.
+              </small>
+            </div>
+          </label>
+
+          {form.auto_billing && (
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <label>Día de emisión</label>
+              <input
+                type="number"
+                min="1"
+                max="28"
+                className="form-control"
+                style={{ maxWidth: 160 }}
+                value={form.auto_billing_day}
+                onChange={(e) => setForm({ ...form, auto_billing_day: e.target.value })}
+              />
+              <small className="texto-ayuda">
+                Día del mes en que se emiten los avisos. Debe ser anterior al vencimiento
+                (hoy configurado el día {form.due_day}).
+              </small>
+            </div>
+          )}
+
+          <div className="separador" />
 
           <div className="form-group">
             <label>Nota al pie de los avisos</label>

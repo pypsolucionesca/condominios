@@ -17,6 +17,9 @@ export function AuthProvider({ children }) {
   const [cargando, setCargando] = useState(true)
   const [errorPerfil, setErrorPerfil] = useState(null)
 
+  // Referencia al perfil vigente, para comparar sin re-suscribir efectos
+  const perfilRef = useRef(null)
+
   const montado = useRef(true)
   useEffect(() => {
     montado.current = true
@@ -93,7 +96,7 @@ export function AuthProvider({ children }) {
         try {
           const { data: c } = await supabase
             .from('condominiums')
-            .select('id, name, base_currency, show_finances_to_all, delinquency_visibility, logo_url, default_billing_mode, default_fee, due_day, late_fee_mode, late_fee_value, late_fee_grace_days, invoice_notes')
+            .select('id, name, base_currency, show_finances_to_all, delinquency_visibility, logo_url, default_billing_mode, default_fee, due_day, late_fee_mode, late_fee_value, late_fee_grace_days, invoice_notes, auto_billing, auto_billing_day')
             .eq('id', prof.condominium_id)
             .maybeSingle()
           cond = c || null
@@ -102,6 +105,7 @@ export function AuthProvider({ children }) {
         }
       }
 
+      perfilRef.current = prof
       setPerfil(prof)
       setUnidades(lista)
       setCondominio(cond)
@@ -159,7 +163,15 @@ export function AuthProvider({ children }) {
       // renueva el token y no cambia el perfil.
       if (evento === 'INITIAL_SESSION' || evento === 'TOKEN_REFRESHED') return
 
+      // Al volver de otra aplicación, Supabase revalida la sesión y emite
+      // SIGNED_IN de nuevo. Si se recargara el perfil aquí, la interfaz
+      // se reiniciaría y el usuario perdería lo que estuviera haciendo.
+      if (evento === 'SIGNED_IN' && perfilRef.current?.id === s?.user?.id) {
+        return
+      }
+
       if (evento === 'SIGNED_OUT') {
+        perfilRef.current = null
         setPerfil(null)
         setUnidades([])
         setCondominio(null)

@@ -453,9 +453,14 @@ export default function Unidades() {
 
                   <div className="unidad-meta">
                     {u.area_m2 ? `${fmtNumero(u.area_m2)} m²` : 'Sin área'}
-                    {' · '}
-                    Alícuota {(Number(u.aliquot) * 100).toFixed(3)}%
                     {u.floor ? ` · Piso ${u.floor}` : ''}
+                    {u.fixed_fee ? ` · Cuota ${fmtUSD(u.fixed_fee)}` : ''}
+                    <span
+                      className="dato-secundario"
+                      title="Coeficiente de propiedad. Solo se usa para repartir gastos extraordinarios."
+                    >
+                      · Alícuota {(Number(u.aliquot) * 100).toFixed(2)}%
+                    </span>
                   </div>
 
                   {gente.length === 0 ? (

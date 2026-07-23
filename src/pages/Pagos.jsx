@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { urlComprobante } from '../lib/imagenes'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador } from '../components/UI'
+import FormularioPago from '../components/FormularioPago'
 
 export default function Pagos() {
   const { perfil } = useAuth()
@@ -24,16 +25,6 @@ export default function Pagos() {
   const [cuentaDestino, setCuentaDestino] = useState('')
   const [urlRecibo, setUrlRecibo] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
-
-  const [formPago, setFormPago] = useState({
-    unit_id: '',
-    amount: '',
-    currency: 'USD',
-    payment_date: hoy(),
-    reference: '',
-    account_id: '',
-    notes: '',
-  })
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -155,53 +146,6 @@ export default function Pagos() {
         }
       },
     })
-  }
-
-  const registrarDirecto = async (e) => {
-    e.preventDefault()
-    setError(null)
-
-    if (!formPago.unit_id) return setError('Seleccione la unidad.')
-    const monto = Number(formPago.amount)
-    if (!monto || monto <= 0) return setError('El monto debe ser mayor que cero.')
-    if (!formPago.account_id) return setError('Seleccione la cuenta de destino.')
-
-    setEnviando(true)
-    try {
-      const { data: idPago, error: err1 } = await supabase.rpc('report_payment', {
-        p_unit_id: formPago.unit_id,
-        p_amount: monto,
-        p_currency: formPago.currency,
-        p_payment_date: formPago.payment_date,
-        p_reference: formPago.reference.trim() || null,
-        p_receipt_url: null,
-        p_notes: formPago.notes.trim() || null,
-      })
-      if (err1) throw err1
-
-      const { error: err2 } = await supabase.rpc('confirm_payment', {
-        p_payment_id: idPago,
-        p_account_id: formPago.account_id,
-      })
-      if (err2) throw err2
-
-      setAviso('Pago registrado y aplicado.')
-      setPanelRegistrar(false)
-      setFormPago({
-        unit_id: '',
-        amount: '',
-        currency: 'USD',
-        payment_date: hoy(),
-        reference: '',
-        account_id: '',
-        notes: '',
-      })
-      cargar()
-    } catch (err) {
-      setError(mensajeError(err))
-    } finally {
-      setEnviando(false)
-    }
   }
 
   // ------------------------------------------------------------------ vista
@@ -446,114 +390,18 @@ export default function Pagos() {
         abierto={panelRegistrar}
         titulo="Registrar pago recibido"
         onCerrar={() => setPanelRegistrar(false)}
+        ancho={620}
       >
-        <p className="texto-ayuda">
-          Para pagos recibidos en efectivo o que el administrador registra directamente. Queda
-          confirmado y aplicado de inmediato.
-        </p>
-
-        <form onSubmit={registrarDirecto}>
-          <div className="form-group">
-            <label>Unidad *</label>
-            <select
-              className="form-control"
-              value={formPago.unit_id}
-              onChange={(e) => setFormPago({ ...formPago, unit_id: e.target.value })}
-            >
-              <option value="">Seleccione…</option>
-              {unidades.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.code}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid-form">
-            <div className="form-group">
-              <label>Monto *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="form-control"
-                value={formPago.amount}
-                onChange={(e) => setFormPago({ ...formPago, amount: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Moneda *</label>
-              <select
-                className="form-control"
-                value={formPago.currency}
-                onChange={(e) => setFormPago({ ...formPago, currency: e.target.value })}
-              >
-                <option value="USD">Dólares (USD)</option>
-                <option value="VES">Bolívares (Bs.)</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Fecha del pago *</label>
-              <input
-                type="date"
-                className="form-control"
-                value={formPago.payment_date}
-                onChange={(e) => setFormPago({ ...formPago, payment_date: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Referencia</label>
-              <input
-                className="form-control"
-                value={formPago.reference}
-                onChange={(e) => setFormPago({ ...formPago, reference: e.target.value })}
-                placeholder="N° de transferencia"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label>Cuenta de destino *</label>
-            <select
-              className="form-control"
-              value={formPago.account_id}
-              onChange={(e) => setFormPago({ ...formPago, account_id: e.target.value })}
-            >
-              <option value="">Seleccione…</option>
-              {cuentas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {c.currency}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Nota</label>
-            <textarea
-              className="form-control"
-              rows={2}
-              value={formPago.notes}
-              onChange={(e) => setFormPago({ ...formPago, notes: e.target.value })}
-            />
-          </div>
-
-          <div className="panel-acciones">
-            <button
-              type="button"
-              className="btn btn-secundario"
-              onClick={() => setPanelRegistrar(false)}
-            >
-              Cancelar
-            </button>
-            <button className="btn btn-primary" disabled={enviando}>
-              {enviando ? 'Registrando…' : 'Registrar y aplicar'}
-            </button>
-          </div>
-        </form>
+        <FormularioPago
+          unidades={unidades}
+          cuentas={cuentas}
+          onCancelar={() => setPanelRegistrar(false)}
+          onCompletado={(mensaje) => {
+            setPanelRegistrar(false)
+            setAviso(mensaje)
+            cargar()
+          }}
+        />
       </Panel>
 
       <ConfirmarConMotivo

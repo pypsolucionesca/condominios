@@ -469,7 +469,28 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
 
     campo('CÉDULA / RIF', beneficiario?.national_id, 14, y)
     campo('CARGO', beneficiario?.role_title, ancho / 2 + 10, y)
-    y += 16
+    y += 14
+
+    // Forma de pago, si está registrada: evita tener que consultarla aparte
+    const formaPago = beneficiario?.bank_1_name
+      ? `${beneficiario.bank_1_name} · ${beneficiario.bank_1_account || ''}`
+      : beneficiario?.mobile_1_phone
+      ? `Pago móvil · ${beneficiario.mobile_1_bank || ''} · ${beneficiario.mobile_1_phone}`
+      : null
+
+    if (formaPago) {
+      doc.setFontSize(7)
+      doc.setTextColor(...GRIS)
+      doc.setFont('helvetica', 'bold')
+      doc.text('FORMA DE PAGO', 14, y)
+      doc.setFontSize(8.5)
+      doc.setTextColor(...OSCURO)
+      doc.setFont('helvetica', 'normal')
+      doc.text(doc.splitTextToSize(formaPago, ancho - 32), 14, y + 5)
+      y += 12
+    } else {
+      y += 2
+    }
 
     // Concepto y monto
     doc.setFillColor(248, 250, 252)

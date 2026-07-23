@@ -1186,3 +1186,247 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 }
 
 .tabla-scroll, .lista-unidades, .grid-cuentas, .list-group { max-width: none; }
+
+/* =====================================================================
+   Formulario de pago en dos pasos
+   ===================================================================== */
+.pasos {
+  display: flex; gap: 8px; margin-bottom: 18px;
+  font-size: 0.78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.02em;
+}
+.pasos span {
+  flex: 1; padding: 8px 10px; text-align: center;
+  background: var(--bg-main); color: var(--text-muted);
+  border-radius: 7px;
+}
+.pasos span.activo { background: var(--primary); color: #fff; }
+
+.resumen-deuda {
+  display: grid; gap: 12px; margin-bottom: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  padding: 15px; background: #f8fafc;
+  border: 1px solid var(--borde); border-radius: 10px;
+}
+.resumen-deuda > div { display: flex; flex-direction: column; gap: 3px; }
+.resumen-deuda small {
+  font-size: 0.67rem; font-weight: 700;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.resumen-deuda strong { font-size: 1.05rem; }
+
+.lista-avisos {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 260px; overflow-y: auto; margin-bottom: 12px;
+}
+.aviso-fila {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 13px; border: 1px solid var(--borde);
+  border-radius: 9px; cursor: pointer; background: #fff;
+  transition: border-color 0.15s, background 0.15s;
+}
+.aviso-fila:hover { border-color: #94a3b8; }
+.aviso-fila.marcado { border-color: var(--primary); background: #eff6ff; }
+.aviso-fila input { width: 17px; height: 17px; flex-shrink: 0; }
+.aviso-datos { flex: 1; min-width: 0; }
+.aviso-datos strong { display: block; font-size: 0.9rem; }
+.aviso-datos small {
+  display: block; font-size: 0.75rem;
+  color: var(--text-muted); margin-top: 2px;
+}
+.aviso-monto { text-align: right; flex-shrink: 0; }
+.aviso-monto strong { display: block; font-size: 0.95rem; }
+.aviso-monto small { font-size: 0.7rem; color: var(--text-muted); }
+
+.total-seleccion {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 14px; background: var(--bg-main);
+  border-radius: 9px; margin-bottom: 4px;
+  font-size: 0.88rem;
+}
+.total-seleccion strong { font-size: 1.15rem; color: var(--primary); }
+
+.bloque-tasa {
+  padding: 14px; background: #f8fafc;
+  border: 1px solid var(--borde); border-radius: 10px;
+  margin-bottom: 18px;
+}
+.tasa-info {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-bottom: 10px;
+}
+.tasa-info > div { display: flex; flex-direction: column; gap: 2px; }
+.tasa-info small {
+  font-size: 0.67rem; font-weight: 700;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.tasa-info strong { font-size: 0.95rem; }
+
+.comparativa {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; padding: 14px;
+  border: 2px solid var(--warning); border-radius: 10px;
+  background: #fffbeb; margin-bottom: 16px;
+}
+.comparativa.cuadra { border-color: var(--success); background: #f0fdf4; }
+.comparativa > div { display: flex; flex-direction: column; gap: 2px; }
+.comparativa small {
+  font-size: 0.65rem; font-weight: 700;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.comparativa strong { font-size: 1rem; }
+.comparativa em {
+  font-size: 0.72rem; font-style: normal; color: var(--text-muted);
+}
+.texto-exito { color: var(--success); }
+
+.sugerencia-cuadre {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 11px 14px; background: #eff6ff;
+  border: 1px solid #bfdbfe; border-radius: 9px;
+  font-size: 0.83rem; margin-bottom: 16px;
+}
+
+.btn-sufijo {
+  position: absolute; right: 5px; top: 50%;
+  transform: translateY(-50%);
+  background: var(--primary); color: #fff;
+  border: none; border-radius: 6px;
+  padding: 6px 11px; font-size: 0.75rem;
+  font-weight: 700; cursor: pointer;
+}
+.btn-sufijo:hover { opacity: 0.9; }
+
+/* =====================================================================
+   Compactación de tarjetas de unidad y cuentas
+   Ocupaban demasiado espacio vertical: con ocho locales había que
+   desplazarse mucho para ver el conjunto.
+   ===================================================================== */
+.tarjeta-unidad { padding: 11px 13px; gap: 12px; }
+.unidad-logo { width: 40px; height: 40px; font-size: 1.15rem; border-radius: 8px; }
+.unidad-titulo { gap: 7px; margin-bottom: 2px; }
+.unidad-titulo strong { font-size: 0.92rem; }
+.unidad-meta { font-size: 0.74rem; }
+.unidad-residentes { margin-top: 6px; gap: 5px; }
+.residente-chip { padding: 3px 8px; font-size: 0.73rem; }
+.residente-chip img { width: 16px; height: 16px; }
+.unidad-saldo small { font-size: 0.62rem; }
+.unidad-saldo strong { font-size: 0.92rem; }
+.lista-unidades { gap: 8px; }
+.chip { padding: 2px 8px; font-size: 0.66rem; }
+
+.tarjeta-cuenta { padding: 12px 14px; }
+.cuenta-cabecera { margin-bottom: 6px; }
+.cuenta-cabecera strong { font-size: 0.9rem; }
+.cuenta-saldo { font-size: 1.1rem; }
+.grid-cuentas { gap: 10px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+
+/* Tabla de morosidad: columnas ajustadas para evitar el desplazamiento
+   horizontal en móvil, que ocultaba el saldo. */
+@media (max-width: 768px) {
+  .tabla-morosidad { font-size: 0.78rem; }
+  .tabla-morosidad th, .tabla-morosidad td { padding: 7px 5px; }
+  .tabla-morosidad .col-unidad { max-width: 92px; }
+  .tabla-morosidad .col-responsable { display: none; }
+  .tabla-morosidad .col-dias { width: 42px; text-align: center; }
+
+  .comparativa { grid-template-columns: 1fr; gap: 8px; padding: 12px; }
+  .comparativa > div {
+    flex-direction: row; justify-content: space-between; align-items: center;
+  }
+  .tasa-info { grid-template-columns: 1fr; }
+  .resumen-deuda { grid-template-columns: 1fr 1fr; }
+  .aviso-fila { padding: 9px 10px; }
+}
+
+/* La alícuota es informativa: no determina el cobro cuando el
+   condominio usa cuota fija, así que se muestra atenuada. */
+.dato-secundario { opacity: 0.65; }
+
+/* --------------------------------------- Fichas de personal y proveedores */
+.bloque-cuenta {
+  padding: 13px; margin-bottom: 12px;
+  background: #f8fafc; border: 1px solid var(--borde);
+  border-radius: 9px;
+}
+.bloque-cuenta .grid-form { gap: 12px; }
+
+.datos-cobro {
+  padding: 12px 14px; margin-bottom: 16px;
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 9px; font-size: 0.83rem;
+}
+.datos-cobro strong {
+  display: block; margin-bottom: 6px;
+  font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.02em; color: var(--text-muted);
+}
+.datos-cobro div { color: var(--text-main); line-height: 1.6; }
+
+.persona-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+}
+
+/* --------------------------------- Menú de acciones: posición adaptable */
+.menu-lista.lado-derecha { right: 0; left: auto; }
+.menu-lista.lado-izquierda { left: 0; right: auto; }
+
+/* En móvil el menú pasa a hoja inferior: un desplegable pequeño se sale
+   de la pantalla cuando el botón está cerca de un borde. */
+.hoja-fondo {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 2500;
+  display: flex; align-items: flex-end;
+  animation: aparecer 0.15s ease;
+}
+.hoja-inferior {
+  width: 100%; background: #fff;
+  border-radius: 16px 16px 0 0;
+  padding: 10px 0 max(14px, env(safe-area-inset-bottom));
+  box-shadow: 0 -6px 30px rgba(0, 0, 0, 0.2);
+  animation: subir-hoja 0.22s ease;
+  max-height: 70vh; overflow-y: auto;
+}
+@keyframes subir-hoja {
+  from { transform: translateY(100%) }
+  to { transform: none }
+}
+.hoja-asa {
+  width: 38px; height: 4px; border-radius: 3px;
+  background: #cbd5e1; margin: 4px auto 12px;
+}
+.hoja-inferior .menu-opcion {
+  padding: 15px 22px; font-size: 0.95rem; gap: 14px;
+}
+.hoja-inferior .menu-opcion span { font-size: 1.15rem; }
+.hoja-inferior .menu-opcion.cancelar {
+  justify-content: center;
+  border-top: 1px solid var(--bg-main);
+  margin-top: 6px; color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* Las pestañas se desplazaban con barra visible; se oculta */
+.pestanas {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pestanas::-webkit-scrollbar { display: none; }
+
+/* En móvil los botones de cabecera de tarjeta no deben ocupar toda la
+   fila: quedaban desproporcionados frente al contenido. */
+@media (max-width: 768px) {
+  .card-header-flex {
+    flex-wrap: nowrap; align-items: center; gap: 10px;
+  }
+  .card-header-flex h2 { flex: 1; min-width: 0; font-size: 0.98rem; }
+  .card-header-flex .btn-accion {
+    width: auto; padding: 8px 13px; font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .card-header-flex .grupo-botones { width: auto; flex-shrink: 0; }
+  .card-header-flex .grupo-botones .btn { flex: 0 0 auto; }
+}

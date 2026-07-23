@@ -227,23 +227,23 @@ export default function PanelControl() {
 
         {morosidad?.modo === 'detallado' && (morosidad.detalle || []).length > 0 && (
           <div className="tabla-scroll" style={{ marginTop: 18 }}>
-            <table className="tabla">
+            <table className="tabla tabla-morosidad">
               <thead>
                 <tr>
-                  <th>Unidad</th>
-                  <th>Responsable</th>
-                  <th className="der">Días</th>
+                  <th className="col-unidad">Unidad</th>
+                  <th className="col-responsable">Responsable</th>
+                  <th className="der col-dias">Días</th>
                   <th className="der">Saldo</th>
                 </tr>
               </thead>
               <tbody>
                 {morosidad.detalle.map((d) => (
                   <tr key={d.unit_id}>
-                    <td>
+                    <td className="col-unidad">
                       <strong>{d.codigo}</strong>
                     </td>
-                    <td>{d.contacto || '—'}</td>
-                    <td className="der">
+                    <td className="col-responsable">{d.contacto || '—'}</td>
+                    <td className="der col-dias">
                       {d.dias_mora > 0 ? (
                         <span className={d.dias_mora > 30 ? 'texto-danger' : 'texto-aviso'}>
                           {d.dias_mora}
