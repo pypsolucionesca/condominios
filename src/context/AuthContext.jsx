@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [perfil, setPerfil] = useState(null)
   const [unidades, setUnidades] = useState([])
+  const [condominio, setCondominio] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [errorPerfil, setErrorPerfil] = useState(null)
 
@@ -38,13 +39,14 @@ export function AuthProvider({ children }) {
     if (!userId) {
       setPerfil(null)
       setUnidades([])
+      setCondominio(null)
       return
     }
 
     try {
       const { data: prof, error: errProf } = await supabase
         .from('profiles')
-        .select('id, full_name, national_id, phone, role, is_active, condominium_id')
+        .select('id, full_name, national_id, phone, role, is_active, condominium_id, avatar_url')
         .eq('id', userId)
         .maybeSingle()
 
@@ -85,14 +87,31 @@ export function AuthProvider({ children }) {
         console.warn('No se pudieron cargar las unidades:', errU)
       }
 
+      // Configuración del condominio: transparencia y visibilidad de morosidad
+      let cond = null
+      if (prof.condominium_id) {
+        try {
+          const { data: c } = await supabase
+            .from('condominiums')
+            .select('id, name, base_currency, show_finances_to_all, delinquency_visibility, logo_url, default_billing_mode, default_fee, due_day, late_fee_mode, late_fee_value, late_fee_grace_days, invoice_notes')
+            .eq('id', prof.condominium_id)
+            .maybeSingle()
+          cond = c || null
+        } catch (errC) {
+          console.warn('No se pudo cargar la configuración del condominio:', errC)
+        }
+      }
+
       setPerfil(prof)
       setUnidades(lista)
+      setCondominio(cond)
       setErrorPerfil(null)
     } catch (err) {
       console.error('Error cargando perfil:', err)
       setErrorPerfil(mensajeError(err))
       setPerfil(null)
       setUnidades([])
+      setCondominio(null)
     }
   }, [])
 
@@ -143,6 +162,7 @@ export function AuthProvider({ children }) {
       if (evento === 'SIGNED_OUT') {
         setPerfil(null)
         setUnidades([])
+        setCondominio(null)
         setErrorPerfil(null)
         setCargando(false)
         return
@@ -190,6 +210,9 @@ export function AuthProvider({ children }) {
     usuario: session?.user ?? null,
     perfil,
     unidades,
+    condominio,
+    finanzasPublicas: Boolean(condominio?.show_finances_to_all),
+    visibilidadMorosidad: condominio?.delinquency_visibility || 'oculto',
     cargando,
     errorPerfil,
     esAdmin: perfil?.role === 'admin',

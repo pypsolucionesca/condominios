@@ -12,7 +12,7 @@ const fmtFecha = (f) => {
 }
 
 export default function MiCuenta() {
-  const { unidades, perfil } = useAuth()
+  const { unidades, perfil, condominio } = useAuth()
   const [unidadSel, setUnidadSel] = useState(null)
   const [movimientos, setMovimientos] = useState([])
   const [avisos, setAvisos] = useState([])
@@ -66,9 +66,28 @@ export default function MiCuenta() {
     }
   }, [unidadSel])
 
+  const unidad = unidades.find((u) => u.id === unidadSel)
+
   const saldo = movimientos.length
     ? Number(movimientos[movimientos.length - 1].running_balance)
     : 0
+
+  const descargarEstado = async () => {
+    try {
+      const { pdfEstadoCuenta, logoParaPdf, descargarPdf } = await import('../lib/pdf')
+      const logo = await logoParaPdf(condominio?.logo_url)
+      const doc = pdfEstadoCuenta({
+        unidad,
+        movimientos,
+        condominio,
+        saldo,
+        logoDataUrl: logo,
+      })
+      descargarPdf(doc, `Estado-cuenta-${unidad?.code || ''}.pdf`)
+    } catch (err) {
+      setError(mensajeError(err))
+    }
+  }
 
   if (!unidades.length) {
     return (
@@ -81,8 +100,6 @@ export default function MiCuenta() {
       </div>
     )
   }
-
-  const unidad = unidades.find((u) => u.id === unidadSel)
 
   return (
     <>
@@ -175,7 +192,14 @@ export default function MiCuenta() {
           </div>
 
           <div className="card">
-            <h2 className="card-header">Estado de cuenta</h2>
+            <div className="card-header-flex">
+              <h2>Estado de cuenta</h2>
+              {movimientos.length > 0 && (
+                <button className="btn btn-secundario btn-auto" onClick={descargarEstado}>
+                  Descargar PDF
+                </button>
+              )}
+            </div>
             {movimientos.length === 0 ? (
               <p className="texto-vacio">No hay movimientos registrados.</p>
             ) : (

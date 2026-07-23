@@ -5,7 +5,15 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Restablecer from './pages/Restablecer'
 import MiCuenta from './pages/MiCuenta'
-import AdminUsuarios from './pages/AdminUsuarios'
+import Unidades from './pages/Unidades'
+import PanelControl from './pages/PanelControl'
+import Cobranza from './pages/Cobranza'
+import Configuracion from './pages/Configuracion'
+import Pagos from './pages/Pagos'
+import Tesoreria from './pages/Tesoreria'
+import ReportarPago from './pages/ReportarPago'
+import Perfil from './pages/Perfil'
+import AvisoInstalacion from './components/AvisoInstalacion'
 import './styles/app.css'
 
 /** Envía a cada rol a su pantalla inicial. */
@@ -15,19 +23,11 @@ function Inicio() {
   return <Navigate to={esAdmin ? '/panel' : '/mi-cuenta'} replace />
 }
 
-function Pendiente({ titulo }) {
-  return (
-    <div className="card">
-      <h2 className="card-header">{titulo}</h2>
-      <p className="texto-vacio">Este módulo se habilitará en la siguiente fase.</p>
-    </div>
-  )
-}
-
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <AvisoInstalacion />
         <Routes>
           {/* Públicas */}
           <Route
@@ -49,33 +49,28 @@ export default function App() {
             }
           >
             <Route path="/" element={<Inicio />} />
+            <Route path="/perfil" element={<Perfil />} />
 
             {/* Residente */}
             <Route path="/mi-cuenta" element={<MiCuenta />} />
-            <Route path="/reportar-pago" element={<Pendiente titulo="Reportar pago" />} />
+            <Route path="/reportar-pago" element={<ReportarPago />} />
 
             {/* Administrador */}
-            <Route
-              path="/panel"
-              element={
-                <RutaProtegida soloAdmin>
-                  <Pendiente titulo="Panel de control" />
-                </RutaProtegida>
-              }
-            />
-            <Route
-              path="/apartamentos"
-              element={
-                <RutaProtegida soloAdmin>
-                  <AdminUsuarios />
-                </RutaProtegida>
-              }
-            />
+            <Route path="/panel" element={<PanelControl />} />
+            <Route path="/unidades" element={<Unidades />} />
             <Route
               path="/cobranza"
               element={
                 <RutaProtegida soloAdmin>
-                  <Pendiente titulo="Cobranza" />
+                  <Cobranza />
+                </RutaProtegida>
+              }
+            />
+            <Route
+              path="/configuracion"
+              element={
+                <RutaProtegida soloAdmin>
+                  <Configuracion />
                 </RutaProtegida>
               }
             />
@@ -83,18 +78,11 @@ export default function App() {
               path="/pagos"
               element={
                 <RutaProtegida soloAdmin>
-                  <Pendiente titulo="Confirmación de pagos" />
+                  <Pagos />
                 </RutaProtegida>
               }
             />
-            <Route
-              path="/tesoreria"
-              element={
-                <RutaProtegida soloAdmin>
-                  <Pendiente titulo="Tesorería" />
-                </RutaProtegida>
-              }
-            />
+            <Route path="/tesoreria" element={<Tesoreria />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

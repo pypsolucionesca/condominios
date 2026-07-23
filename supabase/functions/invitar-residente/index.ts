@@ -30,29 +30,64 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
+    if (!url || !anonKey || !serviceKey) {
+      console.error('Faltan variables de entorno en la función')
+      return json({ error: 'Función mal configurada. Avise al administrador.' }, 500)
+    }
+
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) return json({ error: 'No autenticado' }, 401)
+    if (!authHeader) {
+      console.error('Petición sin cabecera Authorization')
+      return json({ error: 'No autenticado' }, 401)
+    }
 
     // 1) Verificar que quien llama es un administrador activo
     const clienteUsuario = createClient(url, anonKey, {
       global: { headers: { Authorization: authHeader } },
     })
 
-    const { data: { user }, error: errUser } = await clienteUsuario.auth.getUser()
-    if (errUser || !user) return json({ error: 'Sesión inválida' }, 401)
+    const {
+      data: { user },
+      error: errUser,
+    } = await clienteUsuario.auth.getUser()
 
-    const { data: perfil } = await clienteUsuario
+    if (errUser || !user) {
+      console.error('Token inválido:', errUser?.message)
+      return json({ error: 'Sesión inválida. Vuelva a iniciar sesión.' }, 401)
+    }
+
+    console.log('Solicitud de:', user.email, user.id)
+
+    // El perfil se lee con el cliente admin, que salta RLS. Es seguro:
+    // user.id proviene del token ya validado por getUser(), no de datos
+    // que el cliente pueda falsificar.
+    const admin = createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+
+    const { data: perfil, error: errPerfil } = await admin
       .from('profiles')
       .select('role, is_active, condominium_id')
       .eq('id', user.id)
       .maybeSingle()
 
-    if (!perfil || perfil.role !== 'admin' || !perfil.is_active) {
-      return json({ error: 'Se requiere rol de administrador' }, 403)
+    if (errPerfil) {
+      console.error('Error leyendo el perfil:', errPerfil)
+      return json({ error: `Error leyendo el perfil: ${errPerfil.message}` }, 500)
+    }
+    if (!perfil) {
+      console.error('Sin perfil para el usuario', user.id)
+      return json({ error: 'Su usuario no tiene un perfil asignado.' }, 403)
+    }
+    if (perfil.role !== 'admin' || !perfil.is_active) {
+      console.error('Rol insuficiente:', perfil.role, 'activo:', perfil.is_active)
+      return json({ error: 'Se requiere rol de administrador activo.' }, 403)
     }
 
     // 2) Validar la entrada
     const body = await req.json().catch(() => ({}))
+    console.log('Datos recibidos:', JSON.stringify(body))
+
     const email = String(body.email || '').trim().toLowerCase()
     const nombre = String(body.full_name || '').trim()
     const unitId = body.unit_id
@@ -70,41 +105,59 @@ Deno.serve(async (req) => {
       return json({ error: 'Tipo de relación inválido' }, 400)
     }
 
-    const admin = createClient(url, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    })
-
     // 3) Confirmar que el apartamento existe
-    const { data: unidad } = await admin
+    const { data: unidad, error: errUnidad } = await admin
       .from('units')
       .select('id, code, condominium_id')
       .eq('id', unitId)
       .maybeSingle()
 
+    if (errUnidad) {
+      console.error('Error buscando el apartamento:', errUnidad)
+      return json({ error: `Error buscando el apartamento: ${errUnidad.message}` }, 500)
+    }
     if (!unidad) return json({ error: 'El apartamento no existe' }, 404)
 
     // 4) Crear o reutilizar el usuario
     let userId
     let yaExistia = false
 
+    const destino = body.origin || 'https://condominios.pypcloud.com'
+
     const { data: invitado, error: errInv } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { full_name: nombre, role: 'resident' },
-      redirectTo: `${body.origin || url}/restablecer`,
+      redirectTo: `${destino}/restablecer`,
     })
 
     if (errInv) {
-      // Si ya existe en auth, lo localizamos para solo vincularlo
-      const { data: lista } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      console.warn('inviteUserByEmail falló:', errInv.message)
+
+      const { data: lista, error: errLista } = await admin.auth.admin.listUsers({
+        page: 1,
+        perPage: 1000,
+      })
+
+      if (errLista) {
+        console.error('Error listando usuarios:', errLista)
+        return json({ error: `No se pudo invitar: ${errInv.message}` }, 400)
+      }
+
       const existente = lista?.users?.find((u) => u.email?.toLowerCase() === email)
-      if (!existente) return json({ error: errInv.message }, 400)
+
+      if (!existente) {
+        return json({ error: `No se pudo enviar la invitación: ${errInv.message}` }, 400)
+      }
+
       userId = existente.id
       yaExistia = true
+      console.log('Usuario ya existente, se vinculará:', userId)
     } else {
       userId = invitado.user.id
+      console.log('Usuario invitado:', userId)
     }
 
     // 5) Asegurar el perfil (el trigger pudo crearlo ya)
-    const { error: errPerfil } = await admin.from('profiles').upsert(
+    const { error: errUpsertPerfil } = await admin.from('profiles').upsert(
       {
         id: userId,
         full_name: nombre,
@@ -116,22 +169,31 @@ Deno.serve(async (req) => {
       },
       { onConflict: 'id' }
     )
-    if (errPerfil) return json({ error: errPerfil.message }, 400)
+    if (errUpsertPerfil) {
+      console.error('Error guardando el perfil:', errUpsertPerfil)
+      return json({ error: `Error guardando el perfil: ${errUpsertPerfil.message}` }, 400)
+    }
 
     // 6) Vincular al apartamento
     const { error: errVinculo } = await admin.from('unit_members').upsert(
       { unit_id: unitId, user_id: userId, relation: relacion, is_primary: esPrincipal },
       { onConflict: 'unit_id,user_id' }
     )
-    if (errVinculo) return json({ error: errVinculo.message }, 400)
+    if (errVinculo) {
+      console.error('Error vinculando al apartamento:', errVinculo)
+      return json({ error: `Error vinculando al apartamento: ${errVinculo.message}` }, 400)
+    }
 
-    await admin.from('audit_log').insert({
+    const { error: errAudit } = await admin.from('audit_log').insert({
       actor_id: user.id,
       action: 'invitar_residente',
       entity: 'unit_members',
       entity_id: unitId,
       payload: { email, unit_code: unidad.code, relation: relacion, ya_existia: yaExistia },
     })
+    if (errAudit) console.warn('No se pudo registrar en auditoría:', errAudit.message)
+
+    console.log('Invitación completada para', email)
 
     return json({
       ok: true,
@@ -142,7 +204,7 @@ Deno.serve(async (req) => {
         : `Invitación enviada a ${email} para el apartamento ${unidad.code}.`,
     })
   } catch (err) {
-    console.error(err)
+    console.error('Error no controlado:', err)
     return json({ error: err.message || 'Error interno' }, 500)
   }
 })
