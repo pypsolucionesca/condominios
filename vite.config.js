@@ -6,12 +6,22 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Separa las dependencias grandes para que el navegador las cachee
-        // por separado: al actualizar la aplicación, el usuario no vuelve
-        // a descargar React ni Supabase.
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
-          supabase: ['@supabase/supabase-js'],
+        // Vite 8 usa Rolldown, que exige que manualChunks sea una función.
+        // Separa las dependencias grandes en archivos propios para que el
+        // navegador las cachee: al actualizar la aplicación, el usuario no
+        // vuelve a descargar React ni Supabase.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('dompurify')) {
+            return 'pdf'
+          }
+          if (id.includes('@supabase')) {
+            return 'supabase'
+          }
+          if (id.includes('react-router') || id.includes('/react/') || id.includes('react-dom')) {
+            return 'react'
+          }
         },
       },
     },
