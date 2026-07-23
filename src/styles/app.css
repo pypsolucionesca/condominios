@@ -1076,3 +1076,68 @@ textarea.form-control { resize: vertical; font-family: inherit; }
   .campana-panel { position: fixed; top: 66px; right: 10px; }
   .pref-cabecera, .pref-fila { grid-template-columns: 1fr 58px 74px; }
 }
+
+/* =====================================================================
+   Ajuste de espaciado en móvil
+   El contenido quedaba parcialmente oculto tras la cabecera fija y
+   sobraba aire entre bloques. Se compacta sin apretar la lectura.
+   ===================================================================== */
+@media (max-width: 768px) {
+  .main-content {
+    /* La cabecera mide 64px; se deja holgura para que el título no
+       quede cortado, que era el defecto visible. */
+    padding-top: 76px;
+    padding-bottom: 84px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .pagina-cabecera {
+    margin-bottom: 14px;
+    gap: 8px;
+  }
+  .pagina-cabecera h1 {
+    font-size: 1.25rem;
+    line-height: 1.25;
+    margin: 0 0 2px;
+  }
+  .pagina-cabecera .texto-ayuda { font-size: 0.8rem; }
+
+  /* Indicadores más compactos: cuatro tarjetas ocupaban dos pantallas */
+  .grid-indicadores {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .indicador { padding: 13px 14px; border-left-width: 3px; }
+  .indicador-cabecera { margin-bottom: 6px; }
+  .indicador-etiqueta {
+    font-size: 0.63rem;
+    letter-spacing: 0;
+    line-height: 1.3;
+  }
+  .indicador-icono { font-size: 0.9rem; }
+  .indicador-valor { font-size: 1.15rem; }
+  .indicador-detalle { font-size: 0.68rem; margin-top: 3px; }
+
+  .card { padding: 15px; margin-bottom: 14px; }
+  .card-header {
+    font-size: 1.02rem;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+  }
+  .card-header-flex { margin-bottom: 14px; padding-bottom: 10px; }
+  .card-header-flex h2 { font-size: 1.02rem; }
+
+  .alerta { padding: 11px 13px; font-size: 0.84rem; margin: 12px 0; }
+  .estado-vacio { padding: 26px 14px; }
+  .estado-vacio-icono { font-size: 2.1rem; margin-bottom: 10px; }
+  .barra-filtros { gap: 9px; margin-bottom: 14px; }
+}
+
+/* Pantallas estrechas: un indicador por fila queda ilegible en dos
+   columnas cuando el texto es largo. */
+@media (max-width: 360px) {
+  .grid-indicadores { grid-template-columns: 1fr; }
+  .indicador-valor { font-size: 1.3rem; }
+}

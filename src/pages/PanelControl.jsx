@@ -42,6 +42,21 @@ export default function PanelControl() {
     cargar()
   }, [cargar])
 
+  // Recarga al volver a la pestaña y cada cinco minutos: el usuario no
+  // debería tener que pulsar un botón para ver datos actualizados.
+  useEffect(() => {
+    const alVolver = () => {
+      if (document.visibilityState === 'visible') cargar()
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    const intervalo = setInterval(cargar, 300000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', alVolver)
+      clearInterval(intervalo)
+    }
+  }, [cargar])
+
   const descargarInforme = async () => {
     try {
       const desde = new Date()
@@ -113,9 +128,6 @@ export default function PanelControl() {
             {datos.tasa_fecha && ` (${fmtFecha(datos.tasa_fecha)})`}
           </p>
         </div>
-        <button className="btn btn-secundario btn-auto" onClick={cargar}>
-          Actualizar
-        </button>
       </div>
 
       {!datos.tasa_actual && (

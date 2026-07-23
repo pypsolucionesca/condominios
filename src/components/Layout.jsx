@@ -126,6 +126,24 @@ export default function Layout() {
             <NavLink to="/perfil" className="menu-item menu-item-normal" onClick={() => setMenuAbierto(false)}>
               Mi perfil
             </NavLink>
+            {esAdmin && (
+              <NavLink
+                to="/configuracion"
+                className="menu-item menu-item-normal"
+                onClick={() => setMenuAbierto(false)}
+              >
+                Ajustes
+              </NavLink>
+            )}
+            <button
+              className="menu-item menu-item-normal"
+              onClick={() => {
+                setMenuAbierto(false)
+                window.location.reload()
+              }}
+            >
+              Recargar datos
+            </button>
             <button className="menu-item" onClick={salir}>
               Cerrar sesión
             </button>
