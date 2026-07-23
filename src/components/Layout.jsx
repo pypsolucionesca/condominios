@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Campana from './Campana'
+import LimiteError from './LimiteError'
 
 export default function Layout() {
   const { perfil, esAdmin, cerrarSesion, unidades, finanzasPublicas } = useAuth()
@@ -104,7 +105,9 @@ export default function Layout() {
           </div>
         </div>
         <div className="header-derecha">
-          <Campana />
+          <LimiteError silencioso>
+            <Campana />
+          </LimiteError>
           <button
           className="hamburguesa"
           onClick={() => setMenuAbierto((v) => !v)}
@@ -132,7 +135,9 @@ export default function Layout() {
 
       <main className="main-content">
         <div className="campana-escritorio">
-          <Campana />
+          <LimiteError silencioso>
+            <Campana />
+          </LimiteError>
         </div>
         <div className="content-wrapper">
           <Outlet />

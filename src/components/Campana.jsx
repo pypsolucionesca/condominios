@@ -24,14 +24,21 @@ export default function Campana() {
   const [cargando, setCargando] = useState(false)
   const ref = useRef(null)
 
+  // Se guarda en una referencia para que el canal de tiempo real pueda
+  // consultarlo sin figurar entre las dependencias del efecto: incluirlo
+  // haría que el canal se destruyera y recreara en cada apertura, y
+  // Supabase rechaza registrar escuchadores en un canal ya suscrito.
+  const abiertoRef = useRef(false)
+  useEffect(() => {
+    abiertoRef.current = abierto
+  }, [abierto])
+
   const contar = useCallback(async () => {
-    if (!usuario) return
-    const { data } = await supabase.rpc('unread_count')
-    setSinLeer(Number(data) || 0)
-  }, [usuario])
+    const { data, error } = await supabase.rpc('unread_count')
+    if (!error) setSinLeer(Number(data) || 0)
+  }, [])
 
   const cargar = useCallback(async () => {
-    if (!usuario) return
     setCargando(true)
     const { data } = await supabase
       .from('notifications')
@@ -40,42 +47,45 @@ export default function Campana() {
       .limit(25)
     setItems(data || [])
     setCargando(false)
-  }, [usuario])
+  }, [])
 
   useEffect(() => {
     if (!usuario) return
+
     contar()
 
-    // Actualización en tiempo real: si el administrador confirma un pago,
-    // el residente lo ve sin recargar la página.
-    const canal = supabase
-      .channel(`notif-${usuario.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${usuario.id}`,
-        },
-        () => {
-          contar()
-          if (abierto) cargar()
-        }
-      )
-      .subscribe()
+    // El escuchador debe registrarse ANTES de subscribe(): Supabase no
+    // admite añadir callbacks a un canal ya suscrito.
+    const canal = supabase.channel(`notif-${usuario.id}`)
 
-    // Respaldo por si la conexión en tiempo real falla
+    canal.on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${usuario.id}`,
+      },
+      () => {
+        contar()
+        if (abiertoRef.current) cargar()
+      }
+    )
+
+    canal.subscribe()
+
+    // Respaldo por si la conexión en tiempo real no está disponible
     const intervalo = setInterval(contar, 120000)
 
     return () => {
       supabase.removeChannel(canal)
       clearInterval(intervalo)
     }
-  }, [usuario, contar, cargar, abierto])
+  }, [usuario, contar, cargar])
 
   useEffect(() => {
     if (!abierto) return
+
     cargar()
 
     const fuera = (e) => {
