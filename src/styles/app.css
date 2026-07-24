@@ -1896,14 +1896,23 @@ input:disabled, select:disabled, textarea:disabled {
    ajustado dentro del espacio disponible.
    ===================================================================== */
 .sidebar-logo img,
-.header-logo img,
 .login-logo img {
   object-fit: contain;
   padding: 2px;
 }
 
 .sidebar-logo,
-.header-logo,
 .login-logo {
   background: #ffffff;
+}
+
+/* La cabecera móvil usa el icono del árbol, que ya viene con su propio
+   margen: no necesita relleno adicional ni recorte circular. */
+.header-logo {
+  background: #ffffff;
+  border-radius: 9px;
+}
+.header-logo img {
+  object-fit: contain;
+  padding: 1px;
 }

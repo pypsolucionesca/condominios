@@ -92,7 +92,7 @@ export default function Layout() {
         <div className="header-marca">
           <div className="header-logo">
             <img
-              src="/logo.png"
+              src="/icon-192.png"
               alt=""
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
