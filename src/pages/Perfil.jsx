@@ -6,11 +6,12 @@ import { pushDisponible, estadoPermiso, activarPush, desactivarPush, pushActivo 
 import { etiqueta } from '../lib/formato'
 import { Aviso, Cargador, SelectorImagen } from '../components/UI'
 import { reiniciarAplicacion } from '../components/ActualizacionApp'
+import BotonInstalar from '../components/BotonInstalar'
 
 const VAPID = import.meta.env.VITE_VAPID_PUBLIC_KEY
 
 // Debe coincidir con VERSION en public/sw.js
-const VERSION_APP = '1.3.0'
+const VERSION_APP = '1.5.0'
 
 export default function Perfil() {
   const { perfil, usuario, unidades, recargarPerfil, cambiarContrasena } = useAuth()
@@ -308,6 +309,8 @@ export default function Perfil() {
             </strong>
           </div>
         </div>
+
+        <BotonInstalar />
 
         <p className="texto-ayuda">
           Si la aplicación se comporta de forma extraña o muestra datos antiguos, reinicie

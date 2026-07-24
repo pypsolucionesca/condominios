@@ -36,6 +36,23 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   try {
+    // La función se despliega sin verificación de JWT porque la clave
+    // service_role del proyecto usa el formato nuevo y no es un JWT
+    // válido. Se protege con un secreto propio: sin él, cualquiera
+    // podría disparar el envío de correos.
+    const secreto = Deno.env.get('CRON_SECRET')
+
+    if (secreto) {
+      const recibido =
+        req.headers.get('x-cron-secret') ||
+        new URL(req.url).searchParams.get('secret')
+
+      if (recibido !== secreto) {
+        console.warn('Intento de invocación sin secreto válido')
+        return json({ error: 'No autorizado' }, 401)
+      }
+    }
+
     const url = Deno.env.get('SUPABASE_URL')
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const resendKey = Deno.env.get('RESEND_API_KEY')
