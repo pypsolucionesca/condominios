@@ -96,6 +96,10 @@ Deno.serve(async (req) => {
     const telefono = body.phone ? String(body.phone).trim() : null
     const esPrincipal = Boolean(body.is_primary)
 
+    // Rol de acceso: residente normal o restringido (solo paga, no ve
+    // tesorería ni otras unidades). Distinto de la relación con la unidad.
+    const rol = body.role === 'residente_restringido' ? 'residente_restringido' : 'resident'
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: 'Correo electrónico inválido' }, 400)
     }
@@ -125,7 +129,7 @@ Deno.serve(async (req) => {
     const destino = body.origin || 'https://condominios.pypcloud.com'
 
     const { data: invitado, error: errInv } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: nombre, role: 'resident' },
+      data: { full_name: nombre, role: rol },
       redirectTo: `${destino}/restablecer`,
     })
 
@@ -163,7 +167,7 @@ Deno.serve(async (req) => {
         full_name: nombre,
         national_id: cedula,
         phone: telefono,
-        role: 'resident',
+        role: rol,
         condominium_id: unidad.condominium_id,
         is_active: true,
       },
@@ -189,7 +193,7 @@ Deno.serve(async (req) => {
       action: 'invitar_residente',
       entity: 'unit_members',
       entity_id: unitId,
-      payload: { email, unit_code: unidad.code, relation: relacion, ya_existia: yaExistia },
+      payload: { email, unit_code: unidad.code, relation: relacion, role: rol, ya_existia: yaExistia },
     })
     if (errAudit) console.warn('No se pudo registrar en auditoría:', errAudit.message)
 

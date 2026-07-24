@@ -1916,3 +1916,142 @@ input:disabled, select:disabled, textarea:disabled {
   object-fit: contain;
   padding: 1px;
 }
+
+/* =====================================================================
+   Unidades · campos de local comercial, detalle e invitación
+   ===================================================================== */
+
+/* Bloque de datos del comercio en el formulario de unidad */
+.bloque-comercial {
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 16px;
+  margin-bottom: 18px;
+  background: #f8fafc;
+}
+.bloque-comercial .subtitulo {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+/* Zona de datos de la ficha, ahora clicable para abrir el detalle */
+.unidad-datos.clicable {
+  cursor: pointer;
+  border-radius: var(--radio);
+  transition: background 0.15s;
+}
+.unidad-datos.clicable:hover {
+  background: #f1f5f9;
+}
+
+/* Panel de detalle de la unidad */
+.detalle-unidad {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.detalle-seccion {
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 18px;
+}
+.detalle-seccion:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.detalle-seccion .subtitulo {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+/* Lista de pares dato/valor */
+.detalle-lista {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 20px;
+  margin: 0;
+}
+.detalle-lista > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.detalle-lista dt {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.detalle-lista dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-main);
+  word-break: break-word;
+}
+.detalle-notas {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Lista de responsables en el detalle */
+.detalle-responsables {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.responsable-ficha {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+.responsable-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  font-size: 20px;
+}
+.responsable-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.responsable-datos {
+  flex: 1;
+  min-width: 0;
+}
+.responsable-titulo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.responsable-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* En móvil, los pares dato/valor a una sola columna */
+@media (max-width: 640px) {
+  .detalle-lista {
+    grid-template-columns: 1fr;
+  }
+}

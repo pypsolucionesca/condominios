@@ -21,6 +21,9 @@ const FORM_UNIDAD = {
   floor: '',
   area_m2: '',
   notes: '',
+  business_name: '',
+  tax_id: '',
+  phone: '',
 }
 
 const FORM_INVITACION = {
@@ -29,6 +32,7 @@ const FORM_INVITACION = {
   national_id: '',
   phone: '',
   relation: 'propietario',
+  role: 'resident',
   is_primary: false,
 }
 
@@ -47,6 +51,7 @@ export default function Unidades() {
 
   const [panelUnidad, setPanelUnidad] = useState(false)
   const [panelInvitar, setPanelInvitar] = useState(false)
+  const [detalleUnidad, setDetalleUnidad] = useState(null)
   const [editando, setEditando] = useState(null)
   const [unidadDestino, setUnidadDestino] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
@@ -62,13 +67,13 @@ export default function Unidades() {
         supabase
           .from('units')
           .select(
-            'id, code, unit_type, location_type, location_name, floor, area_m2, aliquot, is_active, notes, logo_url'
+            'id, code, unit_type, location_type, location_name, floor, area_m2, aliquot, is_active, notes, logo_url, fixed_fee, business_name, tax_id, phone'
           )
           .order('code'),
         supabase
           .from('unit_members')
           .select(
-            'id, relation, is_primary, unit_id, profiles:user_id (id, full_name, phone, avatar_url, is_active)'
+            'id, relation, is_primary, unit_id, profiles:user_id (id, full_name, national_id, phone, avatar_url, is_active)'
           ),
         supabase.from('units_with_balance').select('id, balance_usd'),
       ])
@@ -134,6 +139,9 @@ export default function Unidades() {
       floor: u.floor || '',
       area_m2: u.area_m2 ?? '',
       notes: u.notes || '',
+      business_name: u.business_name || '',
+      tax_id: u.tax_id || '',
+      phone: u.phone || '',
     })
     setLogoArchivo(null)
     setPanelUnidad(true)
@@ -153,6 +161,7 @@ export default function Unidades() {
 
     setEnviando(true)
     try {
+      const esLocal = formUnidad.unit_type === 'local_comercial'
       const datos = {
         code,
         unit_type: formUnidad.unit_type,
@@ -161,6 +170,9 @@ export default function Unidades() {
         floor: formUnidad.floor.trim() || null,
         area_m2: area,
         notes: formUnidad.notes.trim() || null,
+        business_name: esLocal ? formUnidad.business_name.trim() || null : null,
+        tax_id: esLocal ? formUnidad.tax_id.trim() || null : null,
+        phone: esLocal ? formUnidad.phone.trim() || null : null,
       }
 
       let unitId = editando?.id
@@ -444,7 +456,18 @@ export default function Unidades() {
                   )}
                 </div>
 
-                <div className="unidad-datos">
+                <div
+                  className="unidad-datos clicable"
+                  onClick={() => setDetalleUnidad({ unidad: u, gente })}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault()
+                      setDetalleUnidad({ unidad: u, gente })
+                    }
+                  }}
+                >
                   <div className="unidad-titulo">
                     <strong>{nombreUnidadCorto(u)}</strong>
                     <span className="chip">{etiqueta(u.unit_type)}</span>
@@ -476,7 +499,10 @@ export default function Unidades() {
                           {esAdmin && (
                             <button
                               className="residente-quitar"
-                              onClick={() => desvincular(m)}
+                              onClick={(ev) => {
+                                ev.stopPropagation()
+                                desvincular(m)
+                              }}
                               aria-label="Desvincular"
                             >
                               ×
@@ -564,6 +590,43 @@ export default function Unidades() {
             </small>
           </div>
 
+          {formUnidad.unit_type === 'local_comercial' && (
+            <div className="bloque-comercial">
+              <h4 className="subtitulo">Datos del comercio</h4>
+              <div className="form-group">
+                <label>Nombre de la empresa</label>
+                <input
+                  className="form-control"
+                  value={formUnidad.business_name}
+                  onChange={(e) =>
+                    setFormUnidad({ ...formUnidad, business_name: e.target.value })
+                  }
+                  placeholder="PyPSoluciones C.A."
+                />
+              </div>
+              <div className="grid-form">
+                <div className="form-group">
+                  <label>RIF</label>
+                  <input
+                    className="form-control"
+                    value={formUnidad.tax_id}
+                    onChange={(e) => setFormUnidad({ ...formUnidad, tax_id: e.target.value })}
+                    placeholder="J-12345678-9"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input
+                    className="form-control"
+                    value={formUnidad.phone}
+                    onChange={(e) => setFormUnidad({ ...formUnidad, phone: e.target.value })}
+                    placeholder="0412-1234567"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid-form">
             <div className="form-group">
               <label>Tipo de ubicación</label>
@@ -647,6 +710,159 @@ export default function Unidades() {
         </form>
       </Panel>
 
+      {/* ------------------------------------------------- detalle de unidad */}
+      <Panel
+        abierto={!!detalleUnidad}
+        titulo={detalleUnidad ? nombreUnidadCorto(detalleUnidad.unidad) : ''}
+        onCerrar={() => setDetalleUnidad(null)}
+      >
+        {detalleUnidad && (
+          <div className="detalle-unidad">
+            {detalleUnidad.unidad.unit_type === 'local_comercial' && (
+              <div className="detalle-seccion">
+                <h4 className="subtitulo">Datos del comercio</h4>
+                <dl className="detalle-lista">
+                  <div>
+                    <dt>Empresa</dt>
+                    <dd>{detalleUnidad.unidad.business_name || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>RIF</dt>
+                    <dd>{detalleUnidad.unidad.tax_id || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Teléfono</dt>
+                    <dd>{detalleUnidad.unidad.phone || '—'}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+
+            <div className="detalle-seccion">
+              <h4 className="subtitulo">Datos de la unidad</h4>
+              <dl className="detalle-lista">
+                <div>
+                  <dt>Identificador</dt>
+                  <dd>{detalleUnidad.unidad.code}</dd>
+                </div>
+                <div>
+                  <dt>Tipo</dt>
+                  <dd>{etiqueta(detalleUnidad.unidad.unit_type)}</dd>
+                </div>
+                <div>
+                  <dt>Ubicación</dt>
+                  <dd>
+                    {[
+                      detalleUnidad.unidad.location_type &&
+                        etiqueta(detalleUnidad.unidad.location_type),
+                      detalleUnidad.unidad.location_name,
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Piso / Nivel</dt>
+                  <dd>{detalleUnidad.unidad.floor || '—'}</dd>
+                </div>
+                <div>
+                  <dt>Área</dt>
+                  <dd>
+                    {detalleUnidad.unidad.area_m2
+                      ? `${fmtNumero(detalleUnidad.unidad.area_m2)} m²`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Alícuota</dt>
+                  <dd>{(Number(detalleUnidad.unidad.aliquot) * 100).toFixed(2)}%</dd>
+                </div>
+                {detalleUnidad.unidad.fixed_fee ? (
+                  <div>
+                    <dt>Cuota fija</dt>
+                    <dd>{fmtUSD(detalleUnidad.unidad.fixed_fee)}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              {detalleUnidad.unidad.notes && (
+                <p className="detalle-notas">{detalleUnidad.unidad.notes}</p>
+              )}
+            </div>
+
+            <div className="detalle-seccion">
+              <h4 className="subtitulo">
+                Responsables ({detalleUnidad.gente.length})
+              </h4>
+              {detalleUnidad.gente.length === 0 ? (
+                <p className="texto-ayuda">Sin responsables vinculados.</p>
+              ) : (
+                <ul className="detalle-responsables">
+                  {detalleUnidad.gente.map((m) => (
+                    <li key={m.id} className="responsable-ficha">
+                      <div className="responsable-avatar">
+                        {m.profiles?.avatar_url ? (
+                          <img src={m.profiles.avatar_url} alt="" />
+                        ) : (
+                          <span aria-hidden="true">👤</span>
+                        )}
+                      </div>
+                      <div className="responsable-datos">
+                        <div className="responsable-titulo">
+                          <strong>{m.profiles?.full_name || 'Sin nombre'}</strong>
+                          <span className="chip">{etiqueta(m.relation)}</span>
+                          {m.is_primary && (
+                            <span className="chip" title="Contacto principal">
+                              ★ Principal
+                            </span>
+                          )}
+                        </div>
+                        <div className="responsable-meta">
+                          {m.profiles?.national_id && (
+                            <span>Cédula/RIF: {m.profiles.national_id}</span>
+                          )}
+                          {m.profiles?.phone && <span>Tel: {m.profiles.phone}</span>}
+                          {!m.profiles?.national_id && !m.profiles?.phone && (
+                            <span>Sin datos de contacto adicionales</span>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {esAdmin && (
+              <div className="panel-acciones">
+                <button
+                  type="button"
+                  className="btn btn-secundario"
+                  onClick={() => {
+                    const u = detalleUnidad.unidad
+                    setDetalleUnidad(null)
+                    abrirEditar(u)
+                  }}
+                >
+                  Editar unidad
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!detalleUnidad.unidad.is_active}
+                  onClick={() => {
+                    const u = detalleUnidad.unidad
+                    setDetalleUnidad(null)
+                    abrirInvitar(u)
+                  }}
+                >
+                  Invitar responsable
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Panel>
+
       {/* ------------------------------------------------- invitar residente */}
       <Panel
         abierto={panelInvitar}
@@ -714,6 +930,24 @@ export default function Unidades() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="form-group">
+            <label>Tipo de acceso</label>
+            <select
+              className="form-control"
+              value={formInvitacion.role}
+              onChange={(e) => setFormInvitacion({ ...formInvitacion, role: e.target.value })}
+            >
+              <option value="resident">Completo — ve finanzas del condominio</option>
+              <option value="residente_restringido">
+                Restringido — solo su cuenta y pagos
+              </option>
+            </select>
+            <small className="texto-ayuda">
+              El acceso restringido es para quien paga condominio pero no debe ver las cuentas,
+              saldos ni las demás unidades. Solo consulta su estado de cuenta y reporta pagos.
+            </small>
           </div>
 
           <label className="checkbox-linea">

@@ -174,7 +174,7 @@ export default function Exoneraciones() {
 
     if (!formC.unit_id) return setError('Seleccione la unidad.')
     const monto = Number(formC.amount)
-    if (!monto || monto <= 0) return setError('Indique el monto a condonar.')
+    if (!monto || monto <= 0) return setError('Indique el monto a exonerar.')
     if (!formC.description.trim()) return setError('Describa el motivo.')
     if (!formC.authorized_by.trim()) return setError('Indique quién autoriza.')
 
@@ -197,7 +197,7 @@ export default function Exoneraciones() {
       if (err) throw err
 
       setAviso(
-        `Condonación de ${fmtUSD(monto)} aplicada a ${data.avisos_cubiertos} aviso(s).` +
+        `Se exoneraron ${fmtUSD(monto)} en ${data.avisos_cubiertos} mes(es).` +
           (Number(data.sobrante) > 0
             ? ` Quedan ${fmtUSD(data.sobrante)} como saldo a favor.`
             : '')
@@ -259,7 +259,7 @@ export default function Exoneraciones() {
         <div>
           <h1>Exoneraciones</h1>
           <p className="texto-ayuda">
-            {activas.length} exoneración(es) vigente(s) · {condonaciones.length} condonación(es)
+            {activas.length} exoneración(es) de cuota vigente(s) · {condonaciones.length} exoneración(es) de meses
           </p>
         </div>
         {esAdmin && (
@@ -272,7 +272,7 @@ export default function Exoneraciones() {
                 setPanel('condonar')
               }}
             >
-              Condonar deuda
+              Exonerar meses
             </button>
             <button
               className="btn btn-primary btn-accion"
@@ -282,7 +282,7 @@ export default function Exoneraciones() {
                 setPanel('exonerar')
               }}
             >
-              Nueva exoneración
+              Exonerar cuota
             </button>
           </div>
         )}
@@ -300,9 +300,9 @@ export default function Exoneraciones() {
           icono="📉"
         />
         <Indicador
-          etiqueta="Total condonado"
+          etiqueta="Total exonerado en meses"
           valor={fmtUSD(datos?.total_condonado)}
-          detalle="Deuda perdonada históricamente"
+          detalle="Meses vencidos exonerados históricamente"
           color="neutro"
           icono="🤝"
         />
@@ -313,13 +313,13 @@ export default function Exoneraciones() {
           className={`pestana ${pestana === 'exoneraciones' ? 'activa' : ''}`}
           onClick={() => setPestana('exoneraciones')}
         >
-          Exoneraciones ({exoneraciones.length})
+          Exoneración de cuota ({exoneraciones.length})
         </button>
         <button
           className={`pestana ${pestana === 'condonaciones' ? 'activa' : ''}`}
           onClick={() => setPestana('condonaciones')}
         >
-          Condonaciones ({condonaciones.length})
+          Meses exonerados ({condonaciones.length})
         </button>
       </div>
 
@@ -400,8 +400,8 @@ export default function Exoneraciones() {
           {condonaciones.length === 0 ? (
             <Vacio
               icono="🤝"
-              titulo="Sin condonaciones"
-              mensaje="Una condonación perdona una deuda concreta que ya existe, sin afectar las cuotas futuras."
+              titulo="Sin meses exonerados"
+              mensaje="Exonerar meses perdona avisos vencidos concretos que ya existen, sin afectar las cuotas futuras. La unidad sigue pagando normalmente los meses siguientes."
             />
           ) : (
             <ul className="list-group">
@@ -598,13 +598,14 @@ export default function Exoneraciones() {
       {/* -------------------------------------------------- condonar deuda */}
       <Panel
         abierto={panel === 'condonar'}
-        titulo="Condonar deuda"
+        titulo="Exonerar meses vencidos"
         onCerrar={() => setPanel(null)}
         ancho={600}
       >
         <p className="texto-ayuda">
-          Perdona una deuda que ya existe. No afecta las cuotas futuras: para eso es la
-          exoneración.
+          Perdona meses vencidos que ya existen. No afecta las cuotas futuras: la unidad sigue
+          pagando normalmente los meses siguientes. Para liberarla de pagar de forma permanente,
+          use Exonerar cuota.
         </p>
 
         <form onSubmit={guardarCondonacion}>
@@ -626,7 +627,7 @@ export default function Exoneraciones() {
 
           {pendientes.length > 0 && (
             <>
-              <h4 className="subtitulo">Avisos a condonar</h4>
+              <h4 className="subtitulo">Meses a exonerar</h4>
               <div className="lista-avisos">
                 {pendientes.map((p) => (
                   <label
@@ -665,7 +666,7 @@ export default function Exoneraciones() {
 
           <div className="grid-form">
             <div className="form-group">
-              <label>Monto a condonar (USD) *</label>
+              <label>Monto a exonerar (USD) *</label>
               <div className="input-con-boton">
                 <input
                   type="number"
@@ -728,7 +729,7 @@ export default function Exoneraciones() {
               rows={2}
               value={formC.description}
               onChange={(e) => setFormC({ ...formC, description: e.target.value })}
-              placeholder="Convenio: paga 3 meses y se condonan los 3 restantes"
+              placeholder="Ej: se exoneran 3 meses atrasados al inquilino por acuerdo"
             />
           </div>
 
@@ -754,7 +755,7 @@ export default function Exoneraciones() {
               Cancelar
             </button>
             <button className="btn btn-primary" disabled={enviando}>
-              {enviando ? 'Aplicando…' : 'Aplicar condonación'}
+              {enviando ? 'Aplicando…' : 'Exonerar meses seleccionados'}
             </button>
           </div>
         </form>
