@@ -13,8 +13,8 @@
   "categories": ["finance", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/favicon.png",
-      "sizes": "273x324",
+      "src": "/logo.png",
+      "sizes": "304x314",
       "type": "image/png",
       "purpose": "any"
     },
