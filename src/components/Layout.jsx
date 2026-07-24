@@ -16,6 +16,7 @@ export default function Layout() {
         { to: '/cobranza', icono: '📄', texto: 'Cobranza' },
         { to: '/pagos', icono: '💵', texto: 'Pagos' },
         { to: '/tesoreria', icono: '🏦', texto: 'Tesorería' },
+        { to: '/exoneraciones', icono: '🤲', texto: 'Exoneraciones' },
         { to: '/configuracion', icono: '⚙️', texto: 'Ajustes' },
       ]
     : [

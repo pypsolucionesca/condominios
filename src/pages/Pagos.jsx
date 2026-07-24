@@ -5,6 +5,7 @@ import { urlComprobante } from '../lib/imagenes'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador } from '../components/UI'
 import FormularioPago from '../components/FormularioPago'
+import { DetallePago } from '../components/Detalles'
 
 export default function Pagos() {
   const { perfil } = useAuth()
@@ -25,6 +26,7 @@ export default function Pagos() {
   const [cuentaDestino, setCuentaDestino] = useState('')
   const [urlRecibo, setUrlRecibo] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
+  const [pagoDetalle, setPagoDetalle] = useState(null)
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -228,7 +230,11 @@ export default function Pagos() {
               </thead>
               <tbody>
                 {visibles.map((p) => (
-                  <tr key={p.id}>
+                  <tr
+                    key={p.id}
+                    className="fila-clicable"
+                    onClick={() => setPagoDetalle(p.id)}
+                  >
                     <td>{fmtFecha(p.payment_date)}</td>
                     <td>
                       <strong>{p.units?.code || '—'}</strong>
@@ -249,9 +255,14 @@ export default function Pagos() {
                     <td>
                       <span className={`badge badge-${p.status}`}>{etiqueta(p.status)}</span>
                     </td>
-                    <td className="der">
+                    <td className="der" onClick={(e) => e.stopPropagation()}>
                       <MenuAcciones
                         acciones={[
+                          {
+                            icono: '🔍',
+                            texto: 'Ver detalle',
+                            onClick: () => setPagoDetalle(p.id),
+                          },
                           {
                             icono: '✅',
                             texto: 'Revisar y confirmar',
@@ -403,6 +414,12 @@ export default function Pagos() {
           }}
         />
       </Panel>
+
+      <DetallePago
+        paymentId={pagoDetalle}
+        abierto={Boolean(pagoDetalle)}
+        onCerrar={() => setPagoDetalle(null)}
+      />
 
       <ConfirmarConMotivo
         datos={confirmacion}

@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     if (resendKey) {
       const { data: pendientes, error } = await admin
         .from('notifications')
-        .select('id, user_id, kind, title, body, link, profiles:user_id (full_name)')
+        .select('id, user_id, kind, title, body, link, condominium_id, profiles:user_id (full_name)')
         .is('email_sent_at', null)
         .order('created_at')
         .limit(LOTE)
@@ -73,6 +73,18 @@ Deno.serve(async (req) => {
         for (const id of ids) {
           const { data } = await admin.auth.admin.getUserById(id)
           if (data?.user?.email) correos[id] = data.user.email
+        }
+
+        // Datos del condominio para personalizar la plantilla
+        const condominios: Record<string, any> = {}
+        const idsCondo = [...new Set(pendientes.map((n: any) => n.condominium_id))]
+        for (const idc of idsCondo) {
+          const { data: c } = await admin
+            .from('condominiums')
+            .select('name, logo_url, invoice_notes')
+            .eq('id', idc)
+            .maybeSingle()
+          if (c) condominios[idc] = c
         }
 
         for (const n of pendientes) {
@@ -97,13 +109,14 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 from: remitente,
                 to: [destino],
-                subject: n.title,
+                subject: `${condominios[n.condominium_id]?.name || 'Condominio'} · ${n.title}`,
                 html: plantillaCorreo({
                   titulo: n.title,
                   cuerpo: n.body,
                   nombre: n.profiles?.full_name,
                   enlace: n.link ? `${appUrl}${n.link}` : appUrl,
                   appUrl,
+                  condominio: condominios[n.condominium_id],
                 }),
               }),
             })
@@ -218,14 +231,28 @@ Deno.serve(async (req) => {
   }
 })
 
-/** Plantilla HTML del correo. Estilos en línea: los clientes de correo ignoran <style>. */
-function plantillaCorreo({ titulo, cuerpo, nombre, enlace, appUrl }: {
+/**
+ * Plantilla HTML del correo.
+ *
+ * Los estilos van en línea porque los clientes de correo ignoran las
+ * hojas de estilo. Se personaliza con el nombre y el logo del
+ * condominio para que el residente reconozca de dónde viene.
+ */
+function plantillaCorreo({ titulo, cuerpo, nombre, enlace, appUrl, condominio }: {
   titulo: string
   cuerpo: string
   nombre?: string
   enlace: string
   appUrl: string
+  condominio?: { name?: string; logo_url?: string; invoice_notes?: string }
 }) {
+  const nombreCondo = condominio?.name || 'Condominio'
+  const logo = condominio?.logo_url
+
+  const cabeceraLogo = logo
+    ? `<img src="${logo}" alt="" width="46" height="46" style="display:block;border-radius:50%;background:#fff;object-fit:cover;">`
+    : ''
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -234,21 +261,38 @@ function plantillaCorreo({ titulo, cuerpo, nombre, enlace, appUrl }: {
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
 
-        <tr><td style="background:#0f172a;padding:22px 26px;">
-          <div style="color:#ffffff;font-size:16px;font-weight:700;">Gestión y Finanzas</div>
-          <div style="color:rgba(255,255,255,0.7);font-size:12px;margin-top:3px;">Condominio Vecinal C4</div>
+        <tr><td style="background:#0f172a;padding:20px 26px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              ${cabeceraLogo ? `<td width="58" valign="middle">${cabeceraLogo}</td>` : ''}
+              <td valign="middle">
+                <div style="color:#ffffff;font-size:16px;font-weight:700;line-height:1.3;">${escapar(nombreCondo)}</div>
+                <div style="color:rgba(255,255,255,0.7);font-size:12px;margin-top:2px;">Gestión y Finanzas</div>
+              </td>
+            </tr>
+          </table>
         </td></tr>
 
         <tr><td style="padding:28px 26px;">
           ${nombre ? `<p style="margin:0 0 14px;color:#64748b;font-size:14px;">Hola, ${escapar(nombre)}:</p>` : ''}
-          <h1 style="margin:0 0 14px;font-size:19px;color:#0f172a;font-weight:700;">${escapar(titulo)}</h1>
+          <h1 style="margin:0 0 14px;font-size:19px;color:#0f172a;font-weight:700;line-height:1.35;">${escapar(titulo)}</h1>
           <p style="margin:0 0 24px;font-size:14px;line-height:1.65;color:#334155;">${escapar(cuerpo)}</p>
           <a href="${enlace}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">Ver en el sistema</a>
         </td></tr>
 
+        ${
+          condominio?.invoice_notes
+            ? `<tr><td style="padding:0 26px 22px;">
+                 <div style="padding:14px 16px;background:#f8fafc;border-left:3px solid #1d4ed8;border-radius:6px;font-size:13px;line-height:1.6;color:#475569;">
+                   ${escapar(condominio.invoice_notes).replace(/\n/g, '<br>')}
+                 </div>
+               </td></tr>`
+            : ''
+        }
+
         <tr><td style="padding:18px 26px;background:#f8fafc;border-top:1px solid #e2e8f0;">
           <p style="margin:0;font-size:11.5px;color:#94a3b8;line-height:1.6;">
-            Este es un mensaje automático del sistema de administración del condominio.
+            Mensaje automático de ${escapar(nombreCondo)}.
             Puede desactivar estos avisos desde
             <a href="${appUrl}/perfil" style="color:#64748b;">su perfil</a>.
           </p>

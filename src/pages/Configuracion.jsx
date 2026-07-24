@@ -3,6 +3,7 @@ import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtNumero, fmtFecha, fmtHoraLocal, hoy } from '../lib/formato'
 import { Aviso, Cargador } from '../components/UI'
+import CampoFecha from '../components/CampoFecha'
 
 const ORIGEN = {
   'dolarapi-oficial': 'BCV automático',
@@ -239,11 +240,10 @@ export default function Configuracion() {
           <div className="grid-form">
             <div className="form-group">
               <label>Fecha</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 value={tasa.rate_date}
-                onChange={(e) => setTasa({ ...tasa, rate_date: e.target.value })}
+                onChange={(v) => setTasa({ ...tasa, rate_date: v })}
               />
             </div>
             <div className="form-group">

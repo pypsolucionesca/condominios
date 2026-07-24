@@ -13,6 +13,7 @@ import Pagos from './pages/Pagos'
 import Tesoreria from './pages/Tesoreria'
 import ReportarPago from './pages/ReportarPago'
 import Perfil from './pages/Perfil'
+import Exoneraciones from './pages/Exoneraciones'
 import AvisoInstalacion from './components/AvisoInstalacion'
 import './styles/app.css'
 
@@ -50,6 +51,7 @@ export default function App() {
           >
             <Route path="/" element={<Inicio />} />
             <Route path="/perfil" element={<Perfil />} />
+            <Route path="/exoneraciones" element={<Exoneraciones />} />
 
             {/* Residente */}
             <Route path="/mi-cuenta" element={<MiCuenta />} />

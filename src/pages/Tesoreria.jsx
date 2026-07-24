@@ -1,8 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtUSD, fmtMoneda, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO } from '../lib/formato'
+import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen } from '../components/UI'
+import CampoFecha from '../components/CampoFecha'
+import { DetalleGasto } from '../components/Detalles'
+import LibroCuenta from '../components/LibroCuenta'
 
 const PESTANAS = [
   { id: 'cuentas', texto: 'Cuentas' },
@@ -28,6 +31,8 @@ export default function Tesoreria() {
   const [panel, setPanel] = useState(null)
   const [editando, setEditando] = useState(null)
   const [confirmacion, setConfirmacion] = useState(null)
+  const [gastoDetalle, setGastoDetalle] = useState(null)
+  const [libroCuenta, setLibroCuenta] = useState(null)
 
   const [formCuenta, setFormCuenta] = useState({
     name: '',
@@ -38,16 +43,20 @@ export default function Tesoreria() {
     opening_balance: '',
   })
 
-  const [formGasto, setFormGasto] = useState({
+  const FORM_GASTO = {
     account_id: '',
     description: '',
-    amount: '',
+    amount_usd: '',      // el monto se define siempre en dólares
+    amount: '',          // lo que realmente se paga, en la moneda elegida
     currency: 'USD',
     expense_date: hoy(),
     category_id: '',
     supplier: '',
     invoice_ref: '',
-  })
+  }
+
+  const [formGasto, setFormGasto] = useState(FORM_GASTO)
+  const [reciboGasto, setReciboGasto] = useState(null)
 
   const FORM_PERSONA = {
     kind: 'empleado',
@@ -94,6 +103,7 @@ export default function Tesoreria() {
 
   const [pagoEmpleado, setPagoEmpleado] = useState({
     persona: null,
+    amount_usd: '',
     amount: '',
     currency: 'USD',
     payment_date: hoy(),
@@ -111,6 +121,9 @@ export default function Tesoreria() {
 
   const [saldoInicial, setSaldoInicial] = useState({ cuenta: null, monto: '' })
 
+  const [tasaHoy, setTasaHoy] = useState(null)
+  const [formCategoria, setFormCategoria] = useState({ id: null, name: '' })
+
   const [pagoCompromiso, setPagoCompromiso] = useState({
     id: null,
     account_id: '',
@@ -121,7 +134,7 @@ export default function Tesoreria() {
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const [rC, rG, rCat, rP, rR] = await Promise.all([
+      const [rC, rG, rCat, rP, rR, rT] = await Promise.all([
         supabase.from('accounts_with_balance').select('*').order('name'),
         supabase
           .from('expenses')
@@ -136,6 +149,7 @@ export default function Tesoreria() {
           .from('recurring_expenses')
           .select('*, payees:payee_id (full_name), accounts:account_id (name)')
           .order('next_due_date'),
+        supabase.rpc('rate_health'),
       ])
 
       if (rC.error) throw rC.error
@@ -146,6 +160,7 @@ export default function Tesoreria() {
       setCategorias(rCat.data || [])
       setPersonal(rP.data || [])
       setCompromisos(rR.data || [])
+      setTasaHoy(rT.data || null)
       setError(null)
     } catch (err) {
       setError(mensajeError(err))
@@ -181,7 +196,18 @@ export default function Tesoreria() {
       }
 
       if (editando) {
-        const { error: err } = await supabase.from('accounts').update(datos).eq('id', editando.id)
+        // La moneda se cambia por una función que verifica que no haya
+        // movimientos: alterarla después corrompería los importes.
+        if (formCuenta.currency !== editando.currency) {
+          const { error: eM } = await supabase.rpc('change_account_currency', {
+            p_account_id: editando.id,
+            p_currency: formCuenta.currency,
+          })
+          if (eM) throw eM
+        }
+
+        const { currency, ...resto } = datos
+        const { error: err } = await supabase.from('accounts').update(resto).eq('id', editando.id)
         if (err) throw err
       } else {
         const { error: err } = await supabase.from('accounts').insert([
@@ -212,36 +238,47 @@ export default function Tesoreria() {
 
     if (!formGasto.account_id) return setError('Seleccione la cuenta de origen.')
     if (!formGasto.description.trim()) return setError('Describa el gasto.')
-    const monto = Number(formGasto.amount)
-    if (!monto || monto <= 0) return setError('El monto debe ser mayor que cero.')
+
+    const montoUSD = Number(formGasto.amount_usd)
+    if (!montoUSD || montoUSD <= 0) return setError('Indique el monto en dólares.')
+
+    // Lo que sale de la cuenta: en bolívares se usa el equivalente,
+    // que el administrador puede haber ajustado si el pago real difiere.
+    const montoPago =
+      formGasto.currency === 'USD'
+        ? montoUSD
+        : Number(formGasto.amount) || montoUSD * (tasaHoy?.tasa || 0)
+
+    if (!montoPago || montoPago <= 0) {
+      return setError('No se pudo calcular el monto a pagar. Verifique la tasa.')
+    }
 
     setEnviando(true)
     try {
+      let rutaRecibo = null
+      if (reciboGasto) {
+        const { subirComprobante } = await import('../lib/imagenes')
+        const res = await subirComprobante(reciboGasto, perfil.condominium_id)
+        rutaRecibo = res.ruta
+      }
+
       const { error: err } = await supabase.rpc('register_expense', {
         p_account_id: formGasto.account_id,
         p_description: formGasto.description.trim(),
-        p_amount: monto,
+        p_amount: montoPago,
         p_currency: formGasto.currency,
         p_expense_date: formGasto.expense_date,
         p_category_id: formGasto.category_id || null,
         p_supplier: formGasto.supplier.trim() || null,
         p_invoice_ref: formGasto.invoice_ref.trim() || null,
-        p_receipt_url: null,
+        p_receipt_url: rutaRecibo,
       })
       if (err) throw err
 
       setAviso('Gasto registrado.')
       cerrarPanel()
-      setFormGasto({
-        account_id: '',
-        description: '',
-        amount: '',
-        currency: 'USD',
-        expense_date: hoy(),
-        category_id: '',
-        supplier: '',
-        invoice_ref: '',
-      })
+      setFormGasto(FORM_GASTO)
+      setReciboGasto(null)
       cargar()
     } catch (err) {
       setError(mensajeError(err))
@@ -398,14 +435,134 @@ export default function Tesoreria() {
     }
   }
 
+  const eliminarCuenta = async (c) => {
+    setError(null)
+    try {
+      const { data, error: err } = await supabase.rpc('account_can_delete', {
+        p_account_id: c.id,
+      })
+      if (err) throw err
+
+      if (!data.puede) {
+        setConfirmacion({
+          titulo: `No se puede eliminar «${c.name}»`,
+          mensaje: data.motivo,
+          peligro: true,
+          textoConfirmar: 'Desactivar en su lugar',
+          accion: async () => {
+            const { error: e2 } = await supabase
+              .from('accounts')
+              .update({ is_active: false })
+              .eq('id', c.id)
+            setConfirmacion(null)
+            if (e2) setError(mensajeError(e2))
+            else {
+              setAviso(`${c.name} desactivada.`)
+              cargar()
+            }
+          },
+        })
+        return
+      }
+
+      setConfirmacion({
+        titulo: `Eliminar «${c.name}»`,
+        mensaje:
+          'Se borrará definitivamente. ' + (data.motivo || 'La cuenta no tiene movimientos.'),
+        peligro: true,
+        textoConfirmar: 'Eliminar',
+        accion: async () => {
+          setEnviando(true)
+          const { error: e2 } = await supabase.rpc('delete_account', { p_account_id: c.id })
+          setEnviando(false)
+          setConfirmacion(null)
+          if (e2) setError(mensajeError(e2))
+          else {
+            setAviso(`${c.name} eliminada.`)
+            cargar()
+          }
+        },
+      })
+    } catch (err) {
+      setError(mensajeError(err))
+    }
+  }
+
+  // ---------------------------------------------------------- categorías
+
+  const guardarCategoria = async (e) => {
+    e.preventDefault()
+    setError(null)
+
+    const nombre = formCategoria.name.trim()
+    if (!nombre) return setError('Indique el nombre de la categoría.')
+
+    setEnviando(true)
+    try {
+      if (formCategoria.id) {
+        const { error: err } = await supabase
+          .from('expense_categories')
+          .update({ name: nombre })
+          .eq('id', formCategoria.id)
+        if (err) throw err
+      } else {
+        const { error: err } = await supabase
+          .from('expense_categories')
+          .insert([{ name: nombre, condominium_id: perfil.condominium_id }])
+        if (err) throw err
+      }
+
+      setAviso(formCategoria.id ? 'Categoría actualizada.' : 'Categoría creada.')
+      setFormCategoria({ id: null, name: '' })
+      cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  const eliminarCategoria = (c) => {
+    setConfirmacion({
+      titulo: `Eliminar «${c.name}»`,
+      mensaje:
+        'Los gastos que la usen quedarán sin categoría, pero conservarán su monto y descripción.',
+      peligro: true,
+      textoConfirmar: 'Eliminar',
+      accion: async () => {
+        const { error: err } = await supabase
+          .from('expense_categories')
+          .delete()
+          .eq('id', c.id)
+        setConfirmacion(null)
+        if (err) setError(mensajeError(err))
+        else {
+          setAviso('Categoría eliminada.')
+          cargar()
+        }
+      },
+    })
+  }
+
   // ------------------------------------------------------- pago a empleado
 
   const abrirPagoEmpleado = (persona) => {
     const periodo = { diario: 'Jornada', semanal: 'Semana', quincenal: 'Quincena', mensual: 'Mes' }
+
+    // El salario puede estar configurado en bolívares; se normaliza a
+    // dólares porque es la moneda base de la contabilidad.
+    const salarioUSD =
+      persona.salary_currency === 'VES' && tasaHoy?.tasa
+        ? (Number(persona.salary_amount) / tasaHoy.tasa).toFixed(2)
+        : persona.salary_amount
+        ? String(persona.salary_amount)
+        : ''
+
     setPagoEmpleado({
       persona,
-      amount: persona.salary_amount ? String(persona.salary_amount) : '',
-      currency: persona.salary_currency || 'USD',
+      amount_usd: salarioUSD,
+      amount: '',
+      currency: 'USD',
       payment_date: hoy(),
       account_id: '',
       concepto: persona.salary_period
@@ -419,16 +576,25 @@ export default function Tesoreria() {
     e.preventDefault()
     setError(null)
 
-    const monto = Number(pagoEmpleado.amount)
-    if (!monto || monto <= 0) return setError('Indique el monto a pagar.')
+    const montoUSD = Number(pagoEmpleado.amount_usd)
+    if (!montoUSD || montoUSD <= 0) return setError('Indique el monto en dólares.')
     if (!pagoEmpleado.account_id) return setError('Seleccione la cuenta de origen.')
+
+    const montoPago =
+      pagoEmpleado.currency === 'USD'
+        ? montoUSD
+        : Number(pagoEmpleado.amount) || montoUSD * (tasaHoy?.tasa || 0)
+
+    if (!montoPago || montoPago <= 0) {
+      return setError('No se pudo calcular el monto. Verifique la tasa.')
+    }
 
     setEnviando(true)
     try {
       const { data: idGasto, error: err } = await supabase.rpc('register_expense', {
         p_account_id: pagoEmpleado.account_id,
         p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
-        p_amount: monto,
+        p_amount: montoPago,
         p_currency: pagoEmpleado.currency,
         p_expense_date: pagoEmpleado.payment_date,
         p_category_id: null,
@@ -710,12 +876,40 @@ export default function Tesoreria() {
           ) : (
             <div className="grid-cuentas">
               {cuentas.map((c) => (
-                <div key={c.id} className="tarjeta-cuenta">
-                  <div className="cuenta-cabecera">
+                <div
+                  key={c.id}
+                  className="tarjeta-cuenta clicable"
+                  onClick={() => setLibroCuenta(c.id)}
+                >
+                  <div className="cuenta-cabecera" onClick={(e) => e.stopPropagation()}>
                     <strong>{c.name}</strong>
                     {esAdmin && (
                       <MenuAcciones
                         acciones={[
+                          {
+                            icono: '📖',
+                            texto: 'Ver movimientos',
+                            onClick: () => setLibroCuenta(c.id),
+                          },
+                          {
+                            icono: '🗑️',
+                            texto: 'Eliminar',
+                            peligro: true,
+                            onClick: () => eliminarCuenta(c),
+                            titulo: 'Solo si no tiene movimientos',
+                          },
+                          {
+                            icono: c.is_active ? '🚫' : '✅',
+                            texto: c.is_active ? 'Desactivar' : 'Reactivar',
+                            peligro: c.is_active,
+                            onClick: async () => {
+                              await supabase
+                                .from('accounts')
+                                .update({ is_active: !c.is_active })
+                                .eq('id', c.id)
+                              cargar()
+                            },
+                          },
                           {
                             icono: '💰',
                             texto: 'Saldo inicial',
@@ -751,6 +945,7 @@ export default function Tesoreria() {
                     {etiqueta(c.kind)}
                     {c.bank_name ? ` · ${c.bank_name}` : ''}
                   </small>
+                  <span className="cuenta-ver-mas">Ver movimientos →</span>
                 </div>
               ))}
             </div>
@@ -798,7 +993,11 @@ export default function Tesoreria() {
                 </thead>
                 <tbody>
                   {gastos.map((g) => (
-                    <tr key={g.id}>
+                    <tr
+                      key={g.id}
+                      className="fila-clicable"
+                      onClick={() => setGastoDetalle(g.id)}
+                    >
                       <td>{fmtFecha(g.expense_date)}</td>
                       <td>
                         {g.description}
@@ -814,9 +1013,14 @@ export default function Tesoreria() {
                           <small className="bloque">{fmtMoneda(g.amount, 'VES')}</small>
                         )}
                       </td>
-                      <td className="der">
+                      <td className="der" onClick={(e) => e.stopPropagation()}>
                         <MenuAcciones
                           acciones={[
+                            {
+                              icono: '🔍',
+                              texto: 'Ver detalle',
+                              onClick: () => setGastoDetalle(g.id),
+                            },
                             {
                               icono: '🧾',
                               texto: 'Recibo de pago',
@@ -1104,14 +1308,13 @@ export default function Tesoreria() {
                 className="form-control"
                 value={formCuenta.currency}
                 onChange={(e) => setFormCuenta({ ...formCuenta, currency: e.target.value })}
-                disabled={Boolean(editando)}
               >
                 <option value="USD">Dólares (USD)</option>
                 <option value="VES">Bolívares (Bs.)</option>
               </select>
               {editando && (
                 <small className="texto-ayuda">
-                  La moneda no puede cambiarse: alteraría los movimientos ya registrados.
+                  Solo puede cambiarse si la cuenta no tiene movimientos registrados.
                 </small>
               )}
             </div>
@@ -1170,8 +1373,122 @@ export default function Tesoreria() {
         </form>
       </Panel>
 
-      <Panel abierto={panel === 'gasto'} titulo="Registrar gasto" onCerrar={cerrarPanel}>
+      <Panel abierto={panel === 'gasto'} titulo="Registrar gasto" onCerrar={cerrarPanel} ancho={600}>
         <form onSubmit={guardarGasto}>
+          <div className="form-group">
+            <label>Concepto *</label>
+            <input
+              className="form-control"
+              value={formGasto.description}
+              onChange={(e) => setFormGasto({ ...formGasto, description: e.target.value })}
+              placeholder="Compra de bombillos para la plaza"
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Monto del gasto en dólares *</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="form-control"
+              value={formGasto.amount_usd}
+              onChange={(e) => {
+                const usd = e.target.value
+                setFormGasto({
+                  ...formGasto,
+                  amount_usd: usd,
+                  // Al cambiar el monto se recalcula el equivalente
+                  amount:
+                    formGasto.currency === 'VES' && tasaHoy?.tasa && usd
+                      ? (Number(usd) * tasaHoy.tasa).toFixed(2)
+                      : formGasto.amount,
+                })
+              }}
+              placeholder="0.00"
+            />
+            <small className="texto-ayuda">
+              La contabilidad del condominio se lleva en dólares. Indique aquí el valor del
+              gasto, sin importar en qué moneda lo pague.
+            </small>
+          </div>
+
+          <div className="form-group">
+            <label>¿Con qué moneda se paga? *</label>
+            <div className="opciones-moneda">
+              {['USD', 'VES'].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`opcion-moneda ${formGasto.currency === m ? 'activa' : ''}`}
+                  onClick={() =>
+                    setFormGasto({
+                      ...formGasto,
+                      currency: m,
+                      account_id: '',
+                      amount:
+                        m === 'VES' && tasaHoy?.tasa && formGasto.amount_usd
+                          ? (Number(formGasto.amount_usd) * tasaHoy.tasa).toFixed(2)
+                          : '',
+                    })
+                  }
+                >
+                  <strong>{m === 'USD' ? 'Dólares' : 'Bolívares'}</strong>
+                  <small>{m === 'USD' ? 'USD' : 'Bs.'}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {formGasto.currency === 'VES' && (
+            <>
+              {!tasaHoy?.tasa ? (
+                <Aviso tipo="error">
+                  No hay tasa registrada. Cárguela en Ajustes antes de registrar pagos en
+                  bolívares.
+                </Aviso>
+              ) : (
+                <div className="conversion-bloque">
+                  <div className="conversion-linea">
+                    <span>Tasa del {fmtFecha(tasaHoy.fecha)}</span>
+                    <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
+                  </div>
+                  <div className="conversion-linea destacada">
+                    <span>Monto a pagar</span>
+                    <strong>
+                      {fmtMoneda(
+                        Number(formGasto.amount) ||
+                          Number(formGasto.amount_usd) * tasaHoy.tasa || 0,
+                        'VES'
+                      )}
+                    </strong>
+                  </div>
+                  {tasaHoy.obsoleta && (
+                    <small className="texto-aviso">
+                      La tasa tiene {tasaHoy.dias_antiguedad} días de antigüedad.
+                    </small>
+                  )}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Monto exacto pagado en bolívares</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="form-control"
+                  value={formGasto.amount}
+                  onChange={(e) => setFormGasto({ ...formGasto, amount: e.target.value })}
+                />
+                <small className="texto-ayuda">
+                  Ajústelo si el pago real difiere del cálculo, por redondeo del banco.
+                </small>
+              </div>
+            </>
+          )}
+
           <div className="form-group">
             <label>Cuenta de origen *</label>
             <select
@@ -1181,57 +1498,29 @@ export default function Tesoreria() {
             >
               <option value="">Seleccione…</option>
               {cuentas
-                .filter((c) => c.is_active)
+                .filter((c) => c.is_active && c.currency === formGasto.currency)
                 .map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} · {fmtMoneda(c.current_balance, c.currency)}
                   </option>
                 ))}
             </select>
-          </div>
-
-          <div className="form-group">
-            <label>Concepto *</label>
-            <input
-              className="form-control"
-              value={formGasto.description}
-              onChange={(e) => setFormGasto({ ...formGasto, description: e.target.value })}
-              placeholder="Compra de bombillos para la plaza"
-            />
+            {cuentas.filter((c) => c.is_active && c.currency === formGasto.currency).length ===
+              0 && (
+              <small className="texto-error">
+                No hay cuentas en {formGasto.currency === 'USD' ? 'dólares' : 'bolívares'}.
+                Créela en la pestaña Cuentas.
+              </small>
+            )}
           </div>
 
           <div className="grid-form">
             <div className="form-group">
-              <label>Monto *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="form-control"
-                value={formGasto.amount}
-                onChange={(e) => setFormGasto({ ...formGasto, amount: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Moneda *</label>
-              <select
-                className="form-control"
-                value={formGasto.currency}
-                onChange={(e) => setFormGasto({ ...formGasto, currency: e.target.value })}
-              >
-                <option value="USD">Dólares (USD)</option>
-                <option value="VES">Bolívares (Bs.)</option>
-              </select>
-            </div>
-
-            <div className="form-group">
               <label>Fecha *</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 value={formGasto.expense_date}
-                onChange={(e) => setFormGasto({ ...formGasto, expense_date: e.target.value })}
+                onChange={(v) => setFormGasto({ ...formGasto, expense_date: v })}
               />
             </div>
 
@@ -1249,6 +1538,13 @@ export default function Tesoreria() {
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                className="btn-enlace-mini"
+                onClick={() => setPanel('categorias')}
+              >
+                Administrar categorías
+              </button>
             </div>
 
             <div className="form-group">
@@ -1270,6 +1566,49 @@ export default function Tesoreria() {
             </div>
           </div>
 
+          <div className="form-group">
+            <label>Factura o recibo</label>
+            <div className="zona-archivo">
+              {reciboGasto ? (
+                <div className="archivo-pdf">
+                  <span aria-hidden="true">
+                    {reciboGasto.type === 'application/pdf' ? '📄' : '🧾'}
+                  </span>
+                  <strong>{reciboGasto.name}</strong>
+                </div>
+              ) : (
+                <div className="zona-archivo-vacia">
+                  <span aria-hidden="true">📎</span>
+                  <small>Foto de la factura o recibo</small>
+                </div>
+              )}
+
+              <div className="grupo-botones" style={{ marginTop: 10 }}>
+                <label className="btn-mini btn-primary" style={{ cursor: 'pointer' }}>
+                  {reciboGasto ? 'Cambiar' : 'Seleccionar'}
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => setReciboGasto(e.target.files?.[0] || null)}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                {reciboGasto && (
+                  <button
+                    type="button"
+                    className="btn-mini btn-secundario"
+                    onClick={() => setReciboGasto(null)}
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
+            <small className="texto-ayuda">
+              Las imágenes se comprimen a WebP automáticamente.
+            </small>
+          </div>
+
           <div className="panel-acciones">
             <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
               Cancelar
@@ -1279,6 +1618,95 @@ export default function Tesoreria() {
             </button>
           </div>
         </form>
+      </Panel>
+
+      {/* ------------------------------------------------------ categorías */}
+      <Panel
+        abierto={panel === 'categorias'}
+        titulo="Categorías de gasto"
+        onCerrar={() => {
+          setFormCategoria({ id: null, name: '' })
+          setPanel('gasto')
+        }}
+      >
+        <p className="texto-ayuda">
+          Agrupan los gastos para el informe de transparencia: mantenimiento, servicios,
+          personal, reparaciones.
+        </p>
+
+        <form onSubmit={guardarCategoria}>
+          <div className="form-group">
+            <label>{formCategoria.id ? 'Editar categoría' : 'Nueva categoría'}</label>
+            <div className="input-con-boton">
+              <input
+                className="form-control"
+                value={formCategoria.name}
+                onChange={(e) => setFormCategoria({ ...formCategoria, name: e.target.value })}
+                placeholder="Mantenimiento de áreas comunes"
+              />
+              <button type="submit" className="btn-sufijo" disabled={enviando}>
+                {formCategoria.id ? 'Guardar' : 'Añadir'}
+              </button>
+            </div>
+            {formCategoria.id && (
+              <button
+                type="button"
+                className="btn-enlace-mini"
+                onClick={() => setFormCategoria({ id: null, name: '' })}
+              >
+                Cancelar edición
+              </button>
+            )}
+          </div>
+        </form>
+
+        {categorias.length === 0 ? (
+          <Vacio
+            icono="🏷️"
+            titulo="Sin categorías"
+            mensaje="Cree la primera para clasificar los gastos del condominio."
+          />
+        ) : (
+          <ul className="list-group">
+            {categorias.map((c) => (
+              <li key={c.id} className="list-item">
+                <div>
+                  <strong>{c.name}</strong>
+                  <small>
+                    {gastos.filter((g) => g.category_id === c.id).length} gasto(s)
+                  </small>
+                </div>
+                <div className="list-item-derecha">
+                  <button
+                    className="btn-mini btn-secundario"
+                    onClick={() => setFormCategoria({ id: c.id, name: c.name })}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    className="btn-mini btn-danger"
+                    onClick={() => eliminarCategoria(c)}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="panel-acciones">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setFormCategoria({ id: null, name: '' })
+              setPanel('gasto')
+            }}
+          >
+            Volver al gasto
+          </button>
+        </div>
       </Panel>
 
       <Panel
@@ -1400,12 +1828,11 @@ export default function Tesoreria() {
                   <div className="grid-form">
                     <div className="form-group">
                       <label>Fecha de ingreso</label>
-                      <input
-                        type="date"
-                        className="form-control"
+                      <CampoFecha
+                className="form-control"
                         value={formPersona.hired_at}
-                        onChange={(e) =>
-                          setFormPersona({ ...formPersona, hired_at: e.target.value })
+                        onChange={(v) =>
+                          setFormPersona({ ...formPersona, hired_at: v })
                         }
                       />
                     </div>
@@ -1709,12 +2136,11 @@ export default function Tesoreria() {
 
             <div className="form-group">
               <label>Próximo pago *</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 value={formCompromiso.next_due_date}
-                onChange={(e) =>
-                  setFormCompromiso({ ...formCompromiso, next_due_date: e.target.value })
+                onChange={(v) =>
+                  setFormCompromiso({ ...formCompromiso, next_due_date: v })
                 }
               />
             </div>
@@ -1806,12 +2232,11 @@ export default function Tesoreria() {
             <div className="grid-form">
               <div className="form-group">
                 <label>Fecha del pago *</label>
-                <input
-                  type="date"
-                  className="form-control"
+                <CampoFecha
+                className="form-control"
                   value={pagoCompromiso.payment_date}
-                  onChange={(e) =>
-                    setPagoCompromiso({ ...pagoCompromiso, payment_date: e.target.value })
+                  onChange={(v) =>
+                    setPagoCompromiso({ ...pagoCompromiso, payment_date: v })
                   }
                 />
               </div>
@@ -1994,39 +2419,82 @@ export default function Tesoreria() {
               />
             </div>
 
+            <div className="form-group">
+              <label>Monto en dólares *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="form-control"
+                value={pagoEmpleado.amount_usd}
+                onChange={(e) => {
+                  const usd = e.target.value
+                  setPagoEmpleado({
+                    ...pagoEmpleado,
+                    amount_usd: usd,
+                    amount:
+                      pagoEmpleado.currency === 'VES' && tasaHoy?.tasa && usd
+                        ? (Number(usd) * tasaHoy.tasa).toFixed(2)
+                        : pagoEmpleado.amount,
+                  })
+                }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>¿Con qué moneda se paga? *</label>
+              <div className="opciones-moneda">
+                {['USD', 'VES'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`opcion-moneda ${pagoEmpleado.currency === m ? 'activa' : ''}`}
+                    onClick={() =>
+                      setPagoEmpleado({
+                        ...pagoEmpleado,
+                        currency: m,
+                        account_id: '',
+                        amount:
+                          m === 'VES' && tasaHoy?.tasa && pagoEmpleado.amount_usd
+                            ? (Number(pagoEmpleado.amount_usd) * tasaHoy.tasa).toFixed(2)
+                            : '',
+                      })
+                    }
+                  >
+                    <strong>{m === 'USD' ? 'Dólares' : 'Bolívares'}</strong>
+                    <small>{m === 'USD' ? 'USD' : 'Bs.'}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {pagoEmpleado.currency === 'VES' && tasaHoy?.tasa && (
+              <div className="conversion-bloque">
+                <div className="conversion-linea">
+                  <span>Tasa del {fmtFecha(tasaHoy.fecha)}</span>
+                  <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
+                </div>
+                <div className="conversion-linea destacada">
+                  <span>Monto a pagar</span>
+                  <strong>
+                    {fmtMoneda(
+                      Number(pagoEmpleado.amount) ||
+                        Number(pagoEmpleado.amount_usd) * tasaHoy.tasa || 0,
+                      'VES'
+                    )}
+                  </strong>
+                </div>
+              </div>
+            )}
+
             <div className="grid-form">
               <div className="form-group">
-                <label>Monto *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="form-control"
-                  value={pagoEmpleado.amount}
-                  onChange={(e) => setPagoEmpleado({ ...pagoEmpleado, amount: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Moneda *</label>
-                <select
-                  className="form-control"
-                  value={pagoEmpleado.currency}
-                  onChange={(e) => setPagoEmpleado({ ...pagoEmpleado, currency: e.target.value })}
-                >
-                  <option value="USD">Dólares (USD)</option>
-                  <option value="VES">Bolívares (Bs.)</option>
-                </select>
-              </div>
-
-              <div className="form-group">
                 <label>Fecha *</label>
-                <input
-                  type="date"
-                  className="form-control"
+                <CampoFecha
+                className="form-control"
                   value={pagoEmpleado.payment_date}
-                  onChange={(e) =>
-                    setPagoEmpleado({ ...pagoEmpleado, payment_date: e.target.value })
+                  onChange={(v) =>
+                    setPagoEmpleado({ ...pagoEmpleado, payment_date: v })
                   }
                 />
               </div>
@@ -2042,7 +2510,7 @@ export default function Tesoreria() {
                 >
                   <option value="">Seleccione…</option>
                   {cuentas
-                    .filter((c) => c.is_active)
+                    .filter((c) => c.is_active && c.currency === pagoEmpleado.currency)
                     .map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name} · {fmtMoneda(c.current_balance, c.currency)}
@@ -2141,11 +2609,10 @@ export default function Tesoreria() {
 
             <div className="form-group">
               <label>Fecha *</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 value={formMovimiento.date}
-                onChange={(e) => setFormMovimiento({ ...formMovimiento, date: e.target.value })}
+                onChange={(v) => setFormMovimiento({ ...formMovimiento, date: v })}
               />
             </div>
           </div>
@@ -2195,6 +2662,21 @@ export default function Tesoreria() {
           </div>
         </form>
       </Panel>
+
+      <LibroCuenta
+        cuentaId={libroCuenta}
+        abierto={Boolean(libroCuenta)}
+        onCerrar={() => setLibroCuenta(null)}
+      />
+
+      <DetalleGasto
+        expenseId={gastoDetalle}
+        abierto={Boolean(gastoDetalle)}
+        onCerrar={() => setGastoDetalle(null)}
+        onCambio={cargar}
+        categorias={categorias}
+        personal={personal}
+      />
 
       <Confirmar
         abierto={Boolean(confirmacion)}

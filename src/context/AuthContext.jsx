@@ -96,7 +96,7 @@ export function AuthProvider({ children }) {
         try {
           const { data: c } = await supabase
             .from('condominiums')
-            .select('id, name, base_currency, show_finances_to_all, delinquency_visibility, logo_url, default_billing_mode, default_fee, due_day, late_fee_mode, late_fee_value, late_fee_grace_days, invoice_notes, auto_billing, auto_billing_day')
+            .select('id, name, base_currency, show_finances_to_all, delinquency_visibility, logo_url, default_billing_mode, default_fee, due_day, late_fee_mode, late_fee_value, late_fee_grace_days, invoice_notes, auto_billing, auto_billing_day, exemption_redistributes')
             .eq('id', prof.condominium_id)
             .maybeSingle()
           cond = c || null

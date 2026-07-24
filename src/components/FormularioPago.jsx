@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { fmtUSD, fmtVES, fmtNumero, fmtFecha, hoy } from '../lib/formato'
 import { Aviso, Cargador } from './UI'
+import CampoFecha from './CampoFecha'
 
 /**
  * Registro de un pago con toda la información que el administrador
@@ -321,12 +322,11 @@ export default function FormularioPago({
 
             <div className="form-group">
               <label>Fecha del pago *</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 max={hoy()}
                 value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
+                onChange={(v) => setFecha(v)}
               />
             </div>
           </div>

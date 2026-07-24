@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { subirComprobante, formatearTamano } from '../lib/imagenes'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy } from '../lib/formato'
 import { Aviso, Vacio, Cargador } from '../components/UI'
+import CampoFecha from '../components/CampoFecha'
 
 export default function ReportarPago() {
   const { unidades } = useAuth()
@@ -238,12 +239,11 @@ export default function ReportarPago() {
 
             <div className="form-group">
               <label>Fecha del pago *</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 max={hoy()}
                 value={form.payment_date}
-                onChange={(e) => setForm({ ...form, payment_date: e.target.value })}
+                onChange={(v) => setForm({ ...form, payment_date: v })}
               />
             </div>
 

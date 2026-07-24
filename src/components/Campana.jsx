@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useId } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -23,6 +23,11 @@ export default function Campana() {
   const [sinLeer, setSinLeer] = useState(0)
   const [cargando, setCargando] = useState(false)
   const ref = useRef(null)
+
+  // El componente se monta dos veces (barra lateral y cabecera móvil).
+  // Supabase rechaza dos canales con el mismo nombre, así que cada
+  // instancia necesita el suyo.
+  const idInstancia = useId()
 
   // Se guarda en una referencia para que el canal de tiempo real pueda
   // consultarlo sin figurar entre las dependencias del efecto: incluirlo
@@ -56,7 +61,7 @@ export default function Campana() {
 
     // El escuchador debe registrarse ANTES de subscribe(): Supabase no
     // admite añadir callbacks a un canal ya suscrito.
-    const canal = supabase.channel(`notif-${usuario.id}`)
+    const canal = supabase.channel(`notif-${usuario.id}-${idInstancia}`)
 
     canal.on(
       'postgres_changes',
@@ -81,7 +86,7 @@ export default function Campana() {
       supabase.removeChannel(canal)
       clearInterval(intervalo)
     }
-  }, [usuario, contar, cargar])
+  }, [usuario, contar, cargar, idInstancia])
 
   useEffect(() => {
     if (!abierto) return

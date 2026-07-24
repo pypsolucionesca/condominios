@@ -3,6 +3,8 @@ import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtFecha, fmtMesAno, etiqueta, hoy } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador } from '../components/UI'
+import CampoFecha from '../components/CampoFecha'
+import { DetalleAviso } from '../components/Detalles'
 
 const MODOS = [
   {
@@ -46,6 +48,7 @@ export default function Cobranza() {
   const [panelEmitir, setPanelEmitir] = useState(false)
   const [panelCargo, setPanelCargo] = useState(false)
   const [confirmacion, setConfirmacion] = useState(null)
+  const [avisoDetalle, setAvisoDetalle] = useState(null)
 
   const [formEmision, setFormEmision] = useState({
     periodo: mesActual(),
@@ -381,7 +384,11 @@ export default function Cobranza() {
                     new Date(a.due_date) < new Date(hoy())
 
                   return (
-                    <tr key={a.id}>
+                    <tr
+                      key={a.id}
+                      className="fila-clicable"
+                      onClick={() => setAvisoDetalle(a.id)}
+                    >
                       <td>
                         <strong>{a.invoice_number}</strong>
                       </td>
@@ -397,9 +404,14 @@ export default function Cobranza() {
                       <td className="der">
                         <strong>{fmtUSD(a.total)}</strong>
                       </td>
-                      <td className="der">
+                      <td className="der" onClick={(e) => e.stopPropagation()}>
                         <MenuAcciones
                           acciones={[
+                            {
+                              icono: '🔍',
+                              texto: 'Ver detalle',
+                              onClick: () => setAvisoDetalle(a.id),
+                            },
                             {
                               icono: '📄',
                               texto: 'Descargar PDF',
@@ -665,11 +677,10 @@ export default function Cobranza() {
 
             <div className="form-group">
               <label>Vencimiento</label>
-              <input
-                type="date"
+              <CampoFecha
                 className="form-control"
                 value={formCargo.due_date}
-                onChange={(e) => setFormCargo({ ...formCargo, due_date: e.target.value })}
+                onChange={(v) => setFormCargo({ ...formCargo, due_date: v })}
               />
             </div>
           </div>
@@ -688,6 +699,13 @@ export default function Cobranza() {
           </div>
         </form>
       </Panel>
+
+      <DetalleAviso
+        invoiceId={avisoDetalle}
+        abierto={Boolean(avisoDetalle)}
+        onCerrar={() => setAvisoDetalle(null)}
+        onCambio={cargar}
+      />
 
       <Confirmar
         abierto={Boolean(confirmacion)}
