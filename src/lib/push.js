@@ -27,6 +27,10 @@ export function estadoPermiso() {
 export async function registrarServiceWorker() {
   if (!('serviceWorker' in navigator)) return null
   try {
+    // ActualizacionApp ya lo registra al arrancar; aquí solo se espera
+    // a que esté listo para evitar dos registros simultáneos.
+    const existente = await navigator.serviceWorker.getRegistration()
+    if (existente) return existente
     return await navigator.serviceWorker.register('/sw.js')
   } catch (err) {
     console.warn('No se pudo registrar el service worker:', err)

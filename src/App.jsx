@@ -15,6 +15,7 @@ import ReportarPago from './pages/ReportarPago'
 import Perfil from './pages/Perfil'
 import Exoneraciones from './pages/Exoneraciones'
 import AvisoInstalacion from './components/AvisoInstalacion'
+import ActualizacionApp from './components/ActualizacionApp'
 import './styles/app.css'
 
 /** Envía a cada rol a su pantalla inicial. */
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ActualizacionApp />
         <AvisoInstalacion />
         <Routes>
           {/* Públicas */}

@@ -5,8 +5,12 @@ import { subirAvatar } from '../lib/imagenes'
 import { pushDisponible, estadoPermiso, activarPush, desactivarPush, pushActivo } from '../lib/push'
 import { etiqueta } from '../lib/formato'
 import { Aviso, Cargador, SelectorImagen } from '../components/UI'
+import { reiniciarAplicacion } from '../components/ActualizacionApp'
 
 const VAPID = import.meta.env.VITE_VAPID_PUBLIC_KEY
+
+// Debe coincidir con VERSION en public/sw.js
+const VERSION_APP = '1.3.0'
 
 export default function Perfil() {
   const { perfil, usuario, unidades, recargarPerfil, cambiarContrasena } = useAuth()
@@ -285,6 +289,41 @@ export default function Perfil() {
             </div>
           </>
         )}
+      </div>
+
+      <div className="card">
+        <h2 className="card-header">Aplicación</h2>
+
+        <div className="fila-resumen" style={{ marginBottom: 18 }}>
+          <div>
+            <small>Versión</small>
+            <strong>{VERSION_APP}</strong>
+          </div>
+          <div>
+            <small>Modo</small>
+            <strong>
+              {window.matchMedia('(display-mode: standalone)').matches
+                ? 'Instalada'
+                : 'Navegador'}
+            </strong>
+          </div>
+        </div>
+
+        <p className="texto-ayuda">
+          Si la aplicación se comporta de forma extraña o muestra datos antiguos, reinicie
+          para descargar la versión más reciente. Su sesión no se cerrará.
+        </p>
+
+        <button
+          className="btn btn-secundario btn-accion"
+          onClick={() => {
+            if (confirm('Se limpiarán los archivos guardados y la aplicación se recargará. ¿Continuar?')) {
+              reiniciarAplicacion()
+            }
+          }}
+        >
+          Reiniciar aplicación
+        </button>
       </div>
 
       <div className="card">

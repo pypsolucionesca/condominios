@@ -1,0 +1,18 @@
+# El service worker nunca debe cachearse: es quien detecta las
+# actualizaciones, y una copia antigua dejaría al usuario atrapado
+# en una versión vieja indefinidamente.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Service-Worker-Allowed: /
+
+# El HTML tampoco: referencia los archivos con hash de cada compilación.
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Los recursos con hash sí pueden cachearse indefinidamente: su nombre
+# cambia en cada compilación, así que nunca sirven contenido obsoleto.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
