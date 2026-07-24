@@ -1722,8 +1722,10 @@ html, body, #root {
   color: var(--text-main);
 }
 
-h1, h2, h3, h4, h5, h6,
-p, span, small, strong, em, label, td, th, li, div {
+/* Solo el contenido principal hereda; la barra lateral define el suyo */
+.main-content h1, .main-content h2, .main-content h3,
+.main-content h4, .main-content p, .main-content td,
+.main-content th, .main-content label {
   color: inherit;
 }
 
@@ -1753,16 +1755,71 @@ p, span, small, strong, em, label, td, th, li, div {
   color: var(--text-muted);
 }
 
-/* La barra lateral y la cabecera son oscuras por diseño */
-.sidebar, .sidebar *,
-.header-movil, .header-movil *,
-.login-page {
-  color: inherit;
-}
+/* La barra lateral y la cabecera son oscuras por diseño: sus textos
+   necesitan color claro explícito, no heredado. */
+.sidebar { color: rgba(255, 255, 255, 0.85); }
 .sidebar-marca strong,
-.header-marca strong { color: #ffffff; }
+.header-marca strong {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
 .sidebar-marca small,
-.header-marca small { color: rgba(255, 255, 255, 0.7); }
+.header-marca small {
+  color: rgba(255, 255, 255, 0.7);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.7);
+}
+.sidebar-link {
+  color: rgba(255, 255, 255, 0.75);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.75);
+}
+.sidebar-link:hover {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+.sidebar-link.activo {
+  color: var(--sidebar-activo);
+  -webkit-text-fill-color: var(--sidebar-activo);
+}
+.usuario-info strong,
+.menu-usuario strong {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+.usuario-info small {
+  color: rgba(255, 255, 255, 0.65);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.65);
+}
+.header-movil { color: #ffffff; }
+.hamburguesa {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+.header-derecha .campana-boton {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+.nav-inferior-item {
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+}
+.nav-inferior-item.activo {
+  color: var(--primary);
+  -webkit-text-fill-color: var(--primary);
+}
+.aviso-instalacion { color: var(--text-main); }
+.aviso-instalacion-texto strong {
+  color: var(--text-main);
+  -webkit-text-fill-color: var(--text-main);
+}
+.aviso-instalacion-texto small {
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+}
+.aviso-actualizacion { color: #ffffff; }
+.aviso-actualizacion-texto strong {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
 
 /* Superficies que deben permanecer claras */
 .card,
@@ -1773,8 +1830,7 @@ p, span, small, strong, em, label, td, th, li, div {
 .campana-panel,
 .menu-lista,
 .hoja-inferior,
-.login-card,
-.aviso-instalacion {
+.login-card {
   background-color: #ffffff;
   color: var(--text-main);
 }

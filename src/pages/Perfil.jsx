@@ -11,7 +11,7 @@ import BotonInstalar from '../components/BotonInstalar'
 const VAPID = import.meta.env.VITE_VAPID_PUBLIC_KEY
 
 // Debe coincidir con VERSION en public/sw.js
-const VERSION_APP = '1.5.0'
+const VERSION_APP = '1.5.1'
 
 export default function Perfil() {
   const { perfil, usuario, unidades, recargarPerfil, cambiarContrasena } = useAuth()

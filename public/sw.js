@@ -10,7 +10,7 @@
    resultado es una pantalla en blanco.
    ===================================================================== */
 
-const VERSION = 'v5'
+const VERSION = 'v6'
 const CACHE_ACTUAL = `condominios-${VERSION}`
 
 self.addEventListener('install', () => {
