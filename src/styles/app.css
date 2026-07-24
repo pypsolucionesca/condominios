@@ -1886,3 +1886,24 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: 0.86rem; line-height: 1.8; color: var(--text-main);
 }
 .pasos-ios li { margin-bottom: 4px; }
+
+
+/* =====================================================================
+   Logo del condominio
+
+   logo.png no es exactamente cuadrado (304x314), y con object-fit:cover
+   el círculo lo recortaba por arriba. Con contain se ve completo,
+   ajustado dentro del espacio disponible.
+   ===================================================================== */
+.sidebar-logo img,
+.header-logo img,
+.login-logo img {
+  object-fit: contain;
+  padding: 2px;
+}
+
+.sidebar-logo,
+.header-logo,
+.login-logo {
+  background: #ffffff;
+}
