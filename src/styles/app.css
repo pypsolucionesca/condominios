@@ -1669,3 +1669,43 @@ textarea.form-control { resize: vertical; font-family: inherit; }
   pointer-events: none;
 }
 .list-item .unidad-titulo { margin-bottom: 3px; }
+/* =====================================================================
+   El navegador no debe reinterpretar los colores
+   
+   En modo oscuro, algunos navegadores móviles invierten colores
+   automáticamente y dejan texto blanco sobre fondo blanco. Se declara
+   el esquema explícitamente para que respete la paleta definida.
+   ===================================================================== */
+:root {
+  color-scheme: light;
+}
+
+html, body, #root {
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
+/* Los títulos heredaban un color que el navegador podía sobrescribir */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-main);
+}
+
+.card, .tarjeta-unidad, .tarjeta-cuenta, .panel-lateral, .dialogo {
+  background: #ffffff;
+  color: var(--text-main);
+}
+
+.card-header, .card-header-flex h2, .pagina-cabecera h1 {
+  color: var(--text-main);
+}
+
+input, select, textarea {
+  color: var(--text-main);
+  background: #f8fafc;
+}
+
+/* Safari en iOS aplica su propio estilo a los campos deshabilitados */
+input:disabled, select:disabled, textarea:disabled {
+  -webkit-text-fill-color: var(--text-muted);
+  opacity: 1;
+}
