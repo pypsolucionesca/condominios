@@ -15,6 +15,7 @@ import ReportarPago from './pages/ReportarPago'
 import Perfil from './pages/Perfil'
 import Exoneraciones from './pages/Exoneraciones'
 import AvisoInstalacion from './components/AvisoInstalacion'
+import AvisoNotificaciones from './components/AvisoNotificaciones'
 import ActualizacionApp from './components/ActualizacionApp'
 import './styles/app.css'
 
@@ -47,6 +48,7 @@ export default function App() {
           <Route
             element={
               <RutaProtegida>
+                <AvisoNotificaciones />
                 <Layout />
               </RutaProtegida>
             }
