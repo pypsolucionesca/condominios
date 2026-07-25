@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { subirAvatar } from '../lib/imagenes'
-import { pushDisponible, estadoPermiso, activarPush, desactivarPush, pushActivo } from '../lib/push'
+import { pushDisponible, estadoPermiso, activarPush, desactivarPush, pushActivo, sincronizarSuscripcion } from '../lib/push'
 import { etiqueta } from '../lib/formato'
 import { Aviso, Cargador, SelectorImagen } from '../components/UI'
 import { reiniciarAplicacion } from '../components/ActualizacionApp'
@@ -43,7 +43,12 @@ export default function Perfil() {
       .maybeSingle()
       .then(({ data }) => setPrefs(data))
 
-    pushActivo().then(setPush)
+    // Si ya hay permiso concedido, re-verifica y regenera la suscripción
+    // por si se perdió (SW actualizado, datos limpiados, guardado fallido).
+    // Luego refleja el estado real en el interruptor.
+    sincronizarSuscripcion(VAPID).finally(() => {
+      pushActivo().then(setPush)
+    })
   }, [])
 
   const guardarPerfil = async (e) => {

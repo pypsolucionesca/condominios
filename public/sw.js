@@ -10,7 +10,7 @@
    resultado es una pantalla en blanco.
    ===================================================================== */
 
-const VERSION = 'v8'
+const VERSION = 'v9'
 const CACHE_ACTUAL = `condominios-${VERSION}`
 
 self.addEventListener('install', () => {
@@ -102,7 +102,15 @@ self.addEventListener('push', (evento) => {
     requireInteraction: false,
   }
 
-  evento.waitUntil(self.registration.showNotification(titulo, opciones))
+  // showNotification envuelto para que un fallo puntual (p. ej. icono que
+  // no carga) no impida mostrar el aviso: si falla con icono, se reintenta
+  // sin él. En Android una notificación push que no llama a showNotification
+  // provoca un aviso genérico del sistema o nada; esto lo evita.
+  evento.waitUntil(
+    self.registration.showNotification(titulo, opciones).catch(() =>
+      self.registration.showNotification(titulo, { body: opciones.body, data: opciones.data })
+    )
+  )
 })
 
 self.addEventListener('notificationclick', (evento) => {
