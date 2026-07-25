@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtUSD, fmtFecha, fmtMesAno, etiqueta, hoy } from '../lib/formato'
+import { fmtUSD, fmtFecha, fmtMesAno, etiqueta, hoy, normalizar } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import { DetalleAviso } from '../components/Detalles'
@@ -75,7 +75,7 @@ export default function Cobranza() {
         supabase
           .from('invoices')
           .select(
-            'id, invoice_number, issue_date, due_date, subtotal, total, status, unit_id, period_id, units:unit_id (code, unit_type)'
+            'id, invoice_number, issue_date, due_date, subtotal, previous_balance, total, notes, status, unit_id, period_id, units:unit_id (code, unit_type), billing_periods:period_id (period)'
           )
           .order('issue_date', { ascending: false })
           .order('invoice_number', { ascending: false })
@@ -111,18 +111,21 @@ export default function Cobranza() {
   }, [condominio?.default_billing_mode])
 
   const visibles = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
+    const q = normalizar(busqueda)
     return avisos.filter((a) => {
       if (filtroEstado && a.status !== filtroEstado) return false
       if (!q) return true
       return (
-        a.units?.code?.toLowerCase().includes(q) || String(a.invoice_number).includes(q)
+        normalizar(a.units?.code).includes(q) || String(a.invoice_number).includes(q)
       )
     })
   }, [avisos, filtroEstado, busqueda])
 
   const pendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))
-  const totalPendiente = pendientes.reduce((s, a) => s + Number(a.total || 0), 0)
+  // Se suman los subtotales (el cargo propio de cada aviso), no el campo
+  // total, porque este último ya incluye el saldo anterior y sumarlo entre
+  // varios avisos de la misma unidad duplicaría la deuda.
+  const totalPendiente = pendientes.reduce((s, a) => s + Number(a.subtotal || 0), 0)
 
   // ------------------------------------------------------------- acciones
 
@@ -370,10 +373,11 @@ export default function Cobranza() {
                 <tr>
                   <th>N°</th>
                   <th>Unidad</th>
+                  <th>Concepto</th>
                   <th>Emitido</th>
                   <th>Vence</th>
                   <th>Estado</th>
-                  <th className="der">Total</th>
+                  <th className="der">Monto</th>
                   <th />
                 </tr>
               </thead>
@@ -393,6 +397,13 @@ export default function Cobranza() {
                         <strong>{a.invoice_number}</strong>
                       </td>
                       <td>{a.units?.code || '—'}</td>
+                      <td>
+                        {a.billing_periods?.period
+                          ? fmtMesAno(a.billing_periods.period)
+                          : a.notes
+                          ? a.notes
+                          : 'Cargo puntual'}
+                      </td>
                       <td>{fmtFecha(a.issue_date)}</td>
                       <td className={vencido ? 'texto-danger' : ''}>
                         {fmtFecha(a.due_date)}
@@ -402,7 +413,12 @@ export default function Cobranza() {
                         <span className={`badge badge-${a.status}`}>{etiqueta(a.status)}</span>
                       </td>
                       <td className="der">
-                        <strong>{fmtUSD(a.total)}</strong>
+                        <strong>{fmtUSD(a.subtotal)}</strong>
+                        {Number(a.previous_balance) > 0 && (
+                          <small className="bloque" style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                            Acum. {fmtUSD(a.total)}
+                          </small>
+                        )}
                       </td>
                       <td className="der" onClick={(e) => e.stopPropagation()}>
                         <MenuAcciones

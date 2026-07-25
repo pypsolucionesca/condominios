@@ -10,7 +10,7 @@
    resultado es una pantalla en blanco.
    ===================================================================== */
 
-const VERSION = 'v9'
+const VERSION = 'v10'
 const CACHE_ACTUAL = `condominios-${VERSION}`
 
 self.addEventListener('install', () => {
@@ -95,7 +95,7 @@ self.addEventListener('push', (evento) => {
   const opciones = {
     body: datos.body || '',
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    badge: '/badge-96.png',
     tag: datos.tag || 'condominio',
     data: { url: datos.url || '/' },
     vibrate: [100, 50, 100],

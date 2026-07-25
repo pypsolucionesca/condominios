@@ -7,6 +7,7 @@ import Restablecer from './pages/Restablecer'
 import MiCuenta from './pages/MiCuenta'
 import Unidades from './pages/Unidades'
 import PanelControl from './pages/PanelControl'
+import EstadoUnidad from './pages/EstadoUnidad'
 import Cobranza from './pages/Cobranza'
 import Configuracion from './pages/Configuracion'
 import Pagos from './pages/Pagos'
@@ -63,6 +64,7 @@ export default function App() {
 
             {/* Administrador */}
             <Route path="/panel" element={<PanelControl />} />
+            <Route path="/unidad/:id" element={<EstadoUnidad />} />
             <Route path="/unidades" element={<Unidades />} />
             <Route
               path="/cobranza"

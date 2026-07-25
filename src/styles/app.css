@@ -388,25 +388,42 @@ html, body {
   }
 
   .menu-desplegable {
-    position: absolute; top: 68px; right: 12px;
+    position: fixed; bottom: 62px; left: 12px; right: 12px;
     background: #fff; color: var(--text-main);
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-    width: 230px; overflow: hidden;
+    border-radius: 14px;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+    max-width: 460px; margin: 0 auto;
+    overflow: hidden;
     border: 1px solid var(--borde);
+    z-index: 1001;
+    max-height: 70vh; overflow-y: auto;
+    animation: subir 0.22s ease;
   }
-  .menu-usuario { padding: 14px 16px; border-bottom: 1px solid var(--bg-main); }
-  .menu-usuario strong { display: block; font-size: 0.88rem; }
-  .menu-usuario small { display: block; font-size: 0.75rem; color: var(--text-muted); }
+  .menu-fondo {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 1000;
+  }
+  .menu-usuario { padding: 16px; border-bottom: 1px solid var(--borde); }
+  .menu-usuario strong { display: block; font-size: 0.9rem; color: var(--text-main); }
+  .menu-usuario small { display: block; font-size: 0.76rem; color: var(--text-muted); }
+
+  .menu-nav { padding: 6px 0; }
+  .menu-separador { height: 1px; background: var(--borde); margin: 6px 0; }
+
   .menu-item {
-    display: block; width: 100%;
-    padding: 13px 16px; text-align: left;
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 13px 18px; text-align: left;
     background: #fff; border: none;
-    font-size: 0.88rem; font-weight: 600;
-    cursor: pointer; color: var(--danger);
-    font-family: inherit;
+    font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; color: var(--text-main);
+    font-family: inherit; text-decoration: none;
   }
-  .menu-item:hover { background: #fef2f2; }
+  .menu-item span[aria-hidden] { font-size: 1.1rem; width: 22px; text-align: center; }
+  .menu-item:hover { background: var(--bg-main); }
+  .menu-item.activo { color: var(--primary); background: #eef3fd; }
+  .menu-item-salir { color: var(--danger); }
+  .menu-item-salir:hover { background: #fef2f2; }
 
   .nav-inferior {
     display: flex;
@@ -426,9 +443,11 @@ html, body {
     font-size: 0.68rem; font-weight: 600;
     text-decoration: none;
     padding: 3px;
+    background: none; border: none; font-family: inherit; cursor: pointer;
   }
   .nav-inferior-item.activo { color: var(--primary); }
   .nav-inferior-item .icono { font-size: 1.15rem; }
+  .nav-inferior-menu.activo { color: var(--primary); }
 
   .card { padding: 17px; }
   .card-header { font-size: 1.1rem; }
@@ -474,6 +493,8 @@ html, body {
 
 .panel-lateral {
   background: #fff; width: 100%; height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
   display: flex; flex-direction: column;
   box-shadow: -8px 0 30px rgba(0,0,0,0.15);
   animation: deslizar 0.2s ease;
@@ -492,7 +513,14 @@ html, body {
   padding: 0 6px;
 }
 .panel-cerrar:hover { color: var(--danger); }
-.panel-cuerpo { padding: 24px; overflow-y: auto; flex: 1; }
+.panel-cuerpo {
+  padding: 24px;
+  padding-bottom: 40px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
 .panel-acciones {
   display: flex; gap: 12px; margin-top: 26px;
   padding-top: 20px; border-top: 1px solid var(--borde);
@@ -504,6 +532,7 @@ html, body {
   background: #fff; border-radius: var(--radio);
   padding: 26px; max-width: 420px; width: calc(100% - 40px);
   margin: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+  max-height: 85dvh; overflow-y: auto;
 }
 .dialogo h3 { margin: 0 0 12px; font-size: 1.15rem; }
 .dialogo p { margin: 0 0 22px; color: var(--text-muted); line-height: 1.55; }
@@ -524,6 +553,7 @@ html, body {
   background: #fff; border: 1px solid var(--borde);
   border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   min-width: 190px; z-index: 50; overflow: hidden;
+  max-width: calc(100vw - 24px);
 }
 .menu-opcion {
   display: flex; align-items: center; gap: 10px;
@@ -1780,8 +1810,7 @@ html, body, #root {
   color: var(--sidebar-activo);
   -webkit-text-fill-color: var(--sidebar-activo);
 }
-.usuario-info strong,
-.menu-usuario strong {
+.usuario-info strong {
   color: #ffffff;
   -webkit-text-fill-color: #ffffff;
 }
@@ -1854,7 +1883,7 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Los botones de color conservan su texto blanco */
 .btn-primary, .btn-success, .btn-danger, .btn-warning,
-.btn-salir, .menu-item, .btn-sufijo {
+.btn-salir, .btn-sufijo {
   color: #ffffff;
   -webkit-text-fill-color: #ffffff;
 }
@@ -1966,3 +1995,44 @@ input:disabled, select:disabled, textarea:disabled {
   .aviso-notif-botones { width: 100%; }
   .aviso-notif-botones .btn-mini { flex: 1; }
 }
+
+/* ------------------------------------------ Sub-pestañas (Personal/Proveedores) */
+.sub-pestanas {
+  display: flex; gap: 6px; margin-bottom: 16px;
+  background: var(--bg-main); padding: 4px; border-radius: 10px;
+  width: fit-content; max-width: 100%; overflow-x: auto;
+}
+.sub-pestana {
+  padding: 7px 16px; background: none; border: none;
+  border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; color: var(--text-muted);
+  white-space: nowrap; font-family: inherit;
+}
+.sub-pestana:hover { color: var(--text-main); }
+.sub-pestana.activa { background: #fff; color: var(--primary); box-shadow: var(--sombra); }
+
+/* Filas de lista clicables (persona -> historial) */
+.list-item-clicable { cursor: pointer; transition: background 0.15s; }
+.list-item-clicable:hover { background: var(--bg-main); }
+
+/* ------------------------------------------ Resumen de estado de cuenta (unidad) */
+.resumen-cuadros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.resumen-cuadro {
+  background: var(--bg-main);
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.resumen-cuadro small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+.resumen-cuadro strong { font-size: 1.35rem; }
+.texto-warning { color: var(--warning); }

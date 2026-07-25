@@ -7,6 +7,7 @@ import {
   fmtNumero,
   nombreUnidadCorto,
   etiqueta,
+  normalizar,
   TIPOS_UNIDAD,
   TIPOS_UBICACION,
   RELACIONES,
@@ -101,15 +102,15 @@ export default function Unidades() {
   }, [cargar])
 
   const visibles = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
+    const q = normalizar(busqueda)
     return unidades.filter((u) => {
       if (filtroTipo && u.unit_type !== filtroTipo) return false
       if (!q) return true
       return (
-        u.code?.toLowerCase().includes(q) ||
-        u.location_name?.toLowerCase().includes(q) ||
+        normalizar(u.code).includes(q) ||
+        normalizar(u.location_name).includes(q) ||
         miembros.some(
-          (m) => m.unit_id === u.id && m.profiles?.full_name?.toLowerCase().includes(q)
+          (m) => m.unit_id === u.id && normalizar(m.profiles?.full_name).includes(q)
         )
       )
     })

@@ -109,46 +109,64 @@ export default function Layout() {
           <LimiteError silencioso>
             <Campana />
           </LimiteError>
-          <button
-          className="hamburguesa"
-          onClick={() => setMenuAbierto((v) => !v)}
-          aria-label="Menú"
-          aria-expanded={menuAbierto}
-        >
-          ☰
-        </button>
         </div>
         {menuAbierto && (
-          <div className="menu-desplegable">
-            <div className="menu-usuario">
-              <strong>{perfil?.full_name}</strong>
-              <small>{esAdmin ? 'Administrador' : 'Residente'}</small>
-            </div>
-            <NavLink to="/perfil" className="menu-item menu-item-normal" onClick={() => setMenuAbierto(false)}>
-              Mi perfil
-            </NavLink>
-            {esAdmin && (
+          <>
+            <div className="menu-fondo" onClick={() => setMenuAbierto(false)} />
+            <div className="menu-desplegable">
+              <div className="menu-usuario">
+                <strong>{perfil?.full_name}</strong>
+                <small>
+                  {esAdmin
+                    ? 'Administrador'
+                    : unidades.length === 1
+                    ? `Apto. ${unidades[0].code}`
+                    : 'Residente'}
+                </small>
+              </div>
+
+              <nav className="menu-nav">
+                {enlaces.map((e) => (
+                  <NavLink
+                    key={e.to}
+                    to={e.to}
+                    className={({ isActive }) =>
+                      `menu-item menu-item-nav ${isActive ? 'activo' : ''}`
+                    }
+                    onClick={() => setMenuAbierto(false)}
+                  >
+                    <span aria-hidden="true">{e.icono}</span>
+                    {e.texto}
+                  </NavLink>
+                ))}
+              </nav>
+
+              <div className="menu-separador" />
+
               <NavLink
-                to="/configuracion"
-                className="menu-item menu-item-normal"
+                to="/perfil"
+                className="menu-item menu-item-nav"
                 onClick={() => setMenuAbierto(false)}
               >
-                Ajustes
+                <span aria-hidden="true">👤</span>
+                Mi perfil
               </NavLink>
-            )}
-            <button
-              className="menu-item menu-item-normal"
-              onClick={() => {
-                setMenuAbierto(false)
-                window.location.reload()
-              }}
-            >
-              Recargar datos
-            </button>
-            <button className="menu-item" onClick={salir}>
-              Cerrar sesión
-            </button>
-          </div>
+              <button
+                className="menu-item menu-item-nav"
+                onClick={() => {
+                  setMenuAbierto(false)
+                  window.location.reload()
+                }}
+              >
+                <span aria-hidden="true">🔄</span>
+                Recargar datos
+              </button>
+              <button className="menu-item menu-item-nav menu-item-salir" onClick={salir}>
+                <span aria-hidden="true">🚪</span>
+                Cerrar sesión
+              </button>
+            </div>
+          </>
         )}
       </header>
 
@@ -164,7 +182,7 @@ export default function Layout() {
       </main>
 
       <nav className="nav-inferior">
-        {enlaces.slice(0, 5).map((e) => (
+        {enlaces.slice(0, 2).map((e) => (
           <NavLink
             key={e.to}
             to={e.to}
@@ -176,6 +194,15 @@ export default function Layout() {
             {e.texto}
           </NavLink>
         ))}
+        <button
+          className={`nav-inferior-item nav-inferior-menu ${menuAbierto ? 'activo' : ''}`}
+          onClick={() => setMenuAbierto((v) => !v)}
+          aria-label="Más opciones"
+          aria-expanded={menuAbierto}
+        >
+          <span className="icono" aria-hidden="true">☰</span>
+          Menú
+        </button>
       </nav>
     </div>
   )

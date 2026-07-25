@@ -75,11 +75,13 @@ export function MenuAcciones({ acciones }) {
   const alternar = (e) => {
     e.stopPropagation()
 
-    // Si no cabe a la derecha, se abre hacia la izquierda
+    // Cuando falta espacio a la derecha, el menú debe anclarse por su
+    // borde derecho (right:0) y crecer hacia la izquierda, para no salirse.
+    // Cuando hay espacio de sobra, se ancla a la izquierda y crece a la derecha.
     if (!abierto && botonRef.current && !esMovil) {
       const caja = botonRef.current.getBoundingClientRect()
       const espacioDerecha = window.innerWidth - caja.right
-      setLado(espacioDerecha < 210 ? 'izquierda' : 'derecha')
+      setLado(espacioDerecha < 211 ? 'derecha' : 'izquierda')
     }
 
     setAbierto((v) => !v)

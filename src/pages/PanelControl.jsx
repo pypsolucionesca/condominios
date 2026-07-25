@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta } from '../lib/formato'
@@ -8,6 +8,7 @@ import GastosPorCategoria from '../components/GastosPorCategoria'
 
 export default function PanelControl() {
   const { perfil, esAdmin, condominio } = useAuth()
+  const navigate = useNavigate()
 
   const [datos, setDatos] = useState(null)
   const [morosidad, setMorosidad] = useState(null)
@@ -209,7 +210,7 @@ export default function PanelControl() {
       </div>
 
       <div className="card">
-        <h2 className="card-header">Cartera por cobrar</h2>
+        <h2 className="card-header">Cuentas por Cobrar</h2>
         <div className="fila-resumen">
           <div>
             <small>Total adeudado</small>
@@ -238,7 +239,11 @@ export default function PanelControl() {
               </thead>
               <tbody>
                 {morosidad.detalle.map((d) => (
-                  <tr key={d.unit_id}>
+                  <tr
+                    key={d.unit_id}
+                    className="fila-clicable"
+                    onClick={() => navigate(`/unidad/${d.unit_id}`)}
+                  >
                     <td className="col-unidad">
                       <strong>{d.codigo}</strong>
                     </td>

@@ -10,7 +10,8 @@ import LibroCuenta from '../components/LibroCuenta'
 const PESTANAS = [
   { id: 'cuentas', texto: 'Cuentas' },
   { id: 'gastos', texto: 'Gastos' },
-  { id: 'personal', texto: 'Personal y proveedores' },
+  { id: 'personal', texto: 'Personal' },
+  { id: 'proveedores', texto: 'Proveedores' },
   { id: 'compromisos', texto: 'Pagos recurrentes' },
 ]
 
@@ -109,6 +110,8 @@ export default function Tesoreria() {
     payment_date: hoy(),
     account_id: '',
     concepto: '',
+    tasa_manual: '',     // tasa editable para pagos con fecha pasada
+    operacion: '',       // número de operación (obligatorio si es banco)
   })
 
   const [formMovimiento, setFormMovimiento] = useState({
@@ -568,6 +571,8 @@ export default function Tesoreria() {
       concepto: persona.salary_period
         ? `${periodo[persona.salary_period] || 'Pago'} · ${persona.role_title || persona.full_name}`
         : `Pago a ${persona.full_name}`,
+      tasa_manual: tasaHoy?.tasa ? String(tasaHoy.tasa) : '',
+      operacion: '',
     })
     setPanel('pagar-empleado')
   }
@@ -580,10 +585,14 @@ export default function Tesoreria() {
     if (!montoUSD || montoUSD <= 0) return setError('Indique el monto en dólares.')
     if (!pagoEmpleado.account_id) return setError('Seleccione la cuenta de origen.')
 
+    // Tasa efectiva: la editable (permite registrar pagos con fecha
+    // pasada usando la tasa de ese día, no la de hoy)
+    const tasaEfectiva = Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 0
+
     const montoPago =
       pagoEmpleado.currency === 'USD'
         ? montoUSD
-        : Number(pagoEmpleado.amount) || montoUSD * (tasaHoy?.tasa || 0)
+        : Number(pagoEmpleado.amount) || montoUSD * tasaEfectiva
 
     if (!montoPago || montoPago <= 0) {
       return setError('No se pudo calcular el monto. Verifique la tasa.')
@@ -599,7 +608,7 @@ export default function Tesoreria() {
         p_expense_date: pagoEmpleado.payment_date,
         p_category_id: null,
         p_supplier: pagoEmpleado.persona.full_name,
-        p_invoice_ref: null,
+        p_invoice_ref: pagoEmpleado.operacion.trim() || null,
         p_receipt_url: null,
       })
       if (err) throw err
@@ -1038,18 +1047,18 @@ export default function Tesoreria() {
         </div>
       )}
 
-      {/* ------------------------------------------------------ personal */}
-      {pestana === 'personal' && (
+      {/* --------------------------------------------- personal / proveedores */}
+      {(pestana === 'personal' || pestana === 'proveedores') && (
         <div className="card">
           <div className="card-header-flex">
-            <h2>Personal y proveedores</h2>
+            <h2>{pestana === 'personal' ? 'Personal' : 'Proveedores'}</h2>
             {esAdmin && (
               <button
                 className="btn btn-primary btn-accion"
                 onClick={() => {
                   setEditando(null)
                   setFormPersona({
-                    kind: 'empleado',
+                    kind: pestana === 'personal' ? 'empleado' : 'proveedor',
                     full_name: '',
                     national_id: '',
                     phone: '',
@@ -1059,21 +1068,43 @@ export default function Tesoreria() {
                   setPanel('persona')
                 }}
               >
-                + Nuevo registro
+                + {pestana === 'personal' ? 'Nuevo empleado' : 'Nuevo proveedor'}
               </button>
             )}
           </div>
 
-          {personal.length === 0 ? (
+          {personal.filter((p) =>
+            pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado'
+          ).length === 0 ? (
             <Vacio
-              icono="👷"
-              titulo="Sin registros"
-              mensaje="Registre al personal de mantenimiento y a los proveedores habituales."
+              icono={pestana === 'personal' ? '👷' : '🏪'}
+              titulo={pestana === 'personal' ? 'Sin personal' : 'Sin proveedores'}
+              mensaje={
+                pestana === 'personal'
+                  ? 'Registre al personal de mantenimiento, vigilancia y limpieza.'
+                  : 'Registre a los proveedores habituales del condominio.'
+              }
             />
           ) : (
             <ul className="list-group">
-              {personal.map((p) => (
-                <li key={p.id} className="list-item">
+              {personal
+                .filter((p) =>
+                  pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado'
+                )
+                .map((p) => (
+                <li
+                  key={p.id}
+                  className="list-item list-item-clicable"
+                  onClick={() => abrirHistorial(p)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault()
+                      abrirHistorial(p)
+                    }
+                  }}
+                >
                   {p.photo_url ? (
                     <img src={p.photo_url} alt="" className="persona-avatar" />
                   ) : (
@@ -1096,7 +1127,7 @@ export default function Tesoreria() {
                       </small>
                     )}
                   </div>
-                  <div className="list-item-derecha">
+                  <div className="list-item-derecha" onClick={(e) => e.stopPropagation()}>
                     {!p.is_active && <span className="chip chip-inactivo">Inactivo</span>}
                     {esAdmin && (
                       <MenuAcciones
@@ -2455,8 +2486,13 @@ export default function Tesoreria() {
                         currency: m,
                         account_id: '',
                         amount:
-                          m === 'VES' && tasaHoy?.tasa && pagoEmpleado.amount_usd
-                            ? (Number(pagoEmpleado.amount_usd) * tasaHoy.tasa).toFixed(2)
+                          m === 'VES' &&
+                          (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa) &&
+                          pagoEmpleado.amount_usd
+                            ? (
+                                Number(pagoEmpleado.amount_usd) *
+                                (Number(pagoEmpleado.tasa_manual) || tasaHoy.tasa)
+                              ).toFixed(2)
                             : '',
                       })
                     }
@@ -2468,22 +2504,57 @@ export default function Tesoreria() {
               </div>
             </div>
 
-            {pagoEmpleado.currency === 'VES' && tasaHoy?.tasa && (
+            {pagoEmpleado.currency === 'VES' && (
               <div className="conversion-bloque">
-                <div className="conversion-linea">
-                  <span>Tasa del {fmtFecha(tasaHoy.fecha)}</span>
-                  <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
+                <div className="grid-form">
+                  <div className="form-group">
+                    <label>Tasa (Bs. por USD)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-control"
+                      value={pagoEmpleado.tasa_manual}
+                      onChange={(e) => {
+                        const t = e.target.value
+                        setPagoEmpleado({
+                          ...pagoEmpleado,
+                          tasa_manual: t,
+                          // recalcula el monto en Bs. con la tasa nueva,
+                          // salvo que el usuario ya lo haya editado a mano
+                          amount:
+                            Number(t) && pagoEmpleado.amount_usd
+                              ? (Number(pagoEmpleado.amount_usd) * Number(t)).toFixed(2)
+                              : pagoEmpleado.amount,
+                        })
+                      }}
+                      placeholder="Tasa del día del pago"
+                    />
+                    <small className="texto-ayuda">
+                      Para pagos de fechas pasadas, use la tasa de ese día.
+                    </small>
+                  </div>
+                  <div className="form-group">
+                    <label>Monto a pagar (Bs.)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-control"
+                      value={pagoEmpleado.amount}
+                      onChange={(e) =>
+                        setPagoEmpleado({ ...pagoEmpleado, amount: e.target.value })
+                      }
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
-                <div className="conversion-linea destacada">
-                  <span>Monto a pagar</span>
-                  <strong>
-                    {fmtMoneda(
-                      Number(pagoEmpleado.amount) ||
-                        Number(pagoEmpleado.amount_usd) * tasaHoy.tasa || 0,
-                      'VES'
-                    )}
-                  </strong>
-                </div>
+                {tasaHoy?.tasa && (
+                  <div className="conversion-linea">
+                    <span>Tasa de hoy ({fmtFecha(tasaHoy.fecha)})</span>
+                    <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2518,6 +2589,20 @@ export default function Tesoreria() {
                     ))}
                 </select>
               </div>
+
+              {cuentas.find((c) => c.id === pagoEmpleado.account_id)?.kind === 'banco' && (
+                <div className="form-group">
+                  <label>Número de operación</label>
+                  <input
+                    className="form-control"
+                    value={pagoEmpleado.operacion}
+                    onChange={(e) =>
+                      setPagoEmpleado({ ...pagoEmpleado, operacion: e.target.value })
+                    }
+                    placeholder="N° de referencia de la transferencia o pago móvil"
+                  />
+                </div>
+              )}
             </div>
 
             <p className="texto-ayuda">

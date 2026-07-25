@@ -175,3 +175,16 @@ export function nombreUnidadCorto(u) {
   if (!u) return '—'
   return u.location_name ? `${u.code} · ${u.location_name}` : u.code
 }
+
+/**
+ * Normaliza texto para búsquedas: quita acentos y pasa a minúsculas.
+ * Así "Farmácia", "FARMACIA" y "farmacia" se comparan igual, y el
+ * buscador tolera acentos y mayúsculas.
+ */
+export function normalizar(texto) {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}

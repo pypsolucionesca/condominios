@@ -16,6 +16,7 @@ export default function ReportarPago() {
     unit_id: '',
     amount: '',
     currency: 'USD',
+    method: 'transferencia',
     payment_date: hoy(),
     reference: '',
     notes: '',
@@ -97,6 +98,13 @@ export default function ReportarPago() {
       return setError('No hay tasa de cambio registrada. Reporte el pago en dólares o avise a la administración.')
     }
 
+    // La transferencia y el pago móvil tienen número de operación: es
+    // obligatorio para poder verificar el pago. El efectivo no lo tiene.
+    const requiereOperacion = form.method === 'transferencia' || form.method === 'pago_movil'
+    if (requiereOperacion && !form.reference.trim()) {
+      return setError('Indique el número de operación de la transferencia o pago móvil.')
+    }
+
     if (!form.reference.trim() && !archivo) {
       return setError('Indique la referencia del pago o adjunte el comprobante.')
     }
@@ -110,6 +118,15 @@ export default function ReportarPago() {
         rutaComprobante = res.ruta
       }
 
+      const metodoTexto = {
+        transferencia: 'Transferencia',
+        pago_movil: 'Pago móvil',
+        efectivo: 'Efectivo',
+      }[form.method]
+      const notaConMetodo = [`Método: ${metodoTexto}`, form.notes.trim()]
+        .filter(Boolean)
+        .join('. ')
+
       const { error: err } = await supabase.rpc('report_payment', {
         p_unit_id: form.unit_id,
         p_amount: monto,
@@ -117,7 +134,7 @@ export default function ReportarPago() {
         p_payment_date: form.payment_date,
         p_reference: form.reference.trim() || null,
         p_receipt_url: rutaComprobante,
-        p_notes: form.notes.trim() || null,
+        p_notes: notaConMetodo || null,
       })
       if (err) throw err
 
@@ -128,6 +145,7 @@ export default function ReportarPago() {
         unit_id: form.unit_id,
         amount: '',
         currency: 'USD',
+        method: 'transferencia',
         payment_date: hoy(),
         reference: '',
         notes: '',
@@ -248,12 +266,33 @@ export default function ReportarPago() {
             </div>
 
             <div className="form-group">
-              <label>Referencia</label>
+              <label>Método de pago *</label>
+              <select
+                className="form-control"
+                value={form.method}
+                onChange={(e) => setForm({ ...form, method: e.target.value })}
+              >
+                <option value="transferencia">Transferencia</option>
+                <option value="pago_movil">Pago móvil</option>
+                <option value="efectivo">Efectivo</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>
+                {form.method === 'efectivo'
+                  ? 'Referencia'
+                  : 'Número de operación *'}
+              </label>
               <input
                 className="form-control"
                 value={form.reference}
                 onChange={(e) => setForm({ ...form, reference: e.target.value })}
-                placeholder="N° de transferencia o pago móvil"
+                placeholder={
+                  form.method === 'efectivo'
+                    ? 'Opcional'
+                    : 'N° de la transferencia o pago móvil'
+                }
               />
             </div>
           </div>

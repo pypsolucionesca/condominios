@@ -48,7 +48,7 @@ export default function Configuracion() {
     const [rT, rS] = await Promise.all([
       supabase
         .from('exchange_rates')
-        .select('rate_date, rate_bcv, rate_parallel, source, status')
+        .select('rate_date, rate_bcv, source, status')
         .order('rate_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -215,12 +215,6 @@ export default function Configuracion() {
                 {salud?.es_de_hoy && ' · hoy'}
               </strong>
             </div>
-            {tasaActual.rate_parallel && (
-              <div>
-                <small>Paralela</small>
-                <strong>Bs. {fmtNumero(tasaActual.rate_parallel)}</strong>
-              </div>
-            )}
             <div>
               <small>Origen</small>
               <strong>{ORIGEN[tasaActual.source] || tasaActual.source || 'Manual'}</strong>
