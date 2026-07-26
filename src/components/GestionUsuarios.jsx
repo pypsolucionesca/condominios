@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { etiqueta } from '../lib/formato'
-import { Confirmar, Aviso, Cargador, MenuAcciones } from './UI'
+import { Confirmar, Aviso, Cargador, MenuAcciones, Panel } from './UI'
 
 /**
  * Gestión de usuarios y roles (solo administrador).
@@ -39,6 +39,9 @@ export default function GestionUsuarios() {
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [confirmar, setConfirmar] = useState(null)
+  const [panelInvitar, setPanelInvitar] = useState(false)
+  const [formInvitar, setFormInvitar] = useState({ email: '', full_name: '', role: 'supervisor' })
+  const [invitando, setInvitando] = useState(false)
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -60,6 +63,61 @@ export default function GestionUsuarios() {
   useEffect(() => {
     cargar()
   }, [cargar])
+
+  // Invita a un nuevo administrador o supervisor. Usa la misma Edge
+  // Function que las invitaciones de residentes, pero sin unidad: estos
+  // roles operan el sistema y no quedan atados a un apartamento.
+  const invitarUsuario = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setAviso(null)
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formInvitar.email.trim())) {
+      return setError('Ingrese un correo electrónico válido.')
+    }
+    if (!formInvitar.full_name.trim()) {
+      return setError('Ingrese el nombre del usuario.')
+    }
+
+    setInvitando(true)
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) throw new Error('La sesión expiró. Vuelva a iniciar sesión.')
+
+      const resp = await supabase.functions.invoke('invitar-residente', {
+        body: {
+          email: formInvitar.email.trim(),
+          full_name: formInvitar.full_name.trim(),
+          role: formInvitar.role,
+          origin: window.location.origin,
+        },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+
+      if (resp.error) {
+        let detalle = resp.error.message
+        try {
+          const cuerpo = await resp.error.context?.json?.()
+          if (cuerpo?.error) detalle = cuerpo.error
+        } catch {
+          /* el cuerpo no era JSON */
+        }
+        throw new Error(detalle)
+      }
+      if (resp.data?.error) throw new Error(resp.data.error)
+
+      setAviso(resp.data.mensaje)
+      setPanelInvitar(false)
+      setFormInvitar({ email: '', full_name: '', role: 'supervisor' })
+      await cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setInvitando(false)
+    }
+  }
 
   // Ejecuta una RPC de gestión y refresca la lista
   const ejecutar = async (rpc, params, mensajeOk) => {
@@ -162,7 +220,16 @@ export default function GestionUsuarios() {
 
   return (
     <div className="card">
-      <h2 className="card-header">Usuarios y roles</h2>
+      <div className="card-header-flex">
+        <h2>Usuarios y roles</h2>
+        <button
+          type="button"
+          className="btn btn-primary btn-auto"
+          onClick={() => setPanelInvitar(true)}
+        >
+          + Invitar admin/supervisor
+        </button>
+      </div>
       <p className="texto-ayuda" style={{ marginBottom: 16 }}>
         Administrador gobierna · Supervisor opera · Residente ve su cuenta. Todos los
         cambios de rol quedan registrados.
@@ -207,6 +274,78 @@ export default function GestionUsuarios() {
         onConfirmar={confirmar?.accion}
         onCancelar={() => setConfirmar(null)}
       />
+
+      <Panel
+        abierto={panelInvitar}
+        titulo="Invitar administrador o supervisor"
+        onCerrar={() => setPanelInvitar(false)}
+        ancho={480}
+      >
+        <form onSubmit={invitarUsuario}>
+          <p className="texto-ayuda" style={{ marginBottom: 16 }}>
+            Estos roles operan el sistema y no se vinculan a una unidad. Se enviará una
+            invitación al correo para que la persona defina su contraseña.
+          </p>
+
+          {error && (
+            <Aviso tipo="error" onCerrar={() => setError(null)}>
+              {error}
+            </Aviso>
+          )}
+
+          <div className="form-group">
+            <label>Correo electrónico *</label>
+            <input
+              type="email"
+              className="form-control"
+              value={formInvitar.email}
+              onChange={(e) => setFormInvitar({ ...formInvitar, email: e.target.value })}
+              placeholder="nombre@correo.com"
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Nombre completo *</label>
+            <input
+              className="form-control"
+              value={formInvitar.full_name}
+              onChange={(e) => setFormInvitar({ ...formInvitar, full_name: e.target.value })}
+              placeholder="Nombre y apellido"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Rol *</label>
+            <select
+              className="form-control"
+              value={formInvitar.role}
+              onChange={(e) => setFormInvitar({ ...formInvitar, role: e.target.value })}
+            >
+              <option value="supervisor">Supervisor · opera el sistema</option>
+              <option value="admin">Administrador · gobierna</option>
+            </select>
+            <small className="texto-ayuda">
+              {formInvitar.role === 'admin'
+                ? 'Podrá gestionar usuarios, exonerar, borrar y configurar. Úselo con cuidado.'
+                : 'Podrá confirmar pagos, registrar gastos y emitir avisos. No gestiona usuarios ni configuración.'}
+            </small>
+          </div>
+
+          <div className="panel-acciones">
+            <button
+              type="button"
+              className="btn btn-secundario"
+              onClick={() => setPanelInvitar(false)}
+            >
+              Cancelar
+            </button>
+            <button className="btn btn-primary" disabled={invitando}>
+              {invitando ? 'Enviando…' : 'Enviar invitación'}
+            </button>
+          </div>
+        </form>
+      </Panel>
     </div>
   )
 }

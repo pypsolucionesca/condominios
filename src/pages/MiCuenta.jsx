@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { DetalleAviso, DetallePago } from '../components/Detalles'
 
 const fmtUSD = (n) =>
   new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'USD' }).format(Number(n) || 0)
@@ -18,6 +19,8 @@ export default function MiCuenta() {
   const [avisos, setAvisos] = useState([])
   const [pagos, setPagos] = useState([])
   const [saldo, setSaldo] = useState(0)
+  const [avisoDetalle, setAvisoDetalle] = useState(null)
+  const [pagoDetalle, setPagoDetalle] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
@@ -39,7 +42,7 @@ export default function MiCuenta() {
       supabase.rpc('unit_statement', { p_unit_id: unidadSel }),
       supabase
         .from('invoices')
-        .select('id, invoice_number, issue_date, due_date, total, status')
+        .select('id, invoice_number, issue_date, due_date, subtotal, total, status')
         .eq('unit_id', unidadSel)
         .order('issue_date', { ascending: false })
         .limit(24),
@@ -156,7 +159,11 @@ export default function MiCuenta() {
             ) : (
               <ul className="list-group">
                 {avisos.map((a) => (
-                  <li key={a.id} className="list-item">
+                  <li
+                    key={a.id}
+                    className="list-item list-item-clicable"
+                    onClick={() => setAvisoDetalle(a.id)}
+                  >
                     <div>
                       <strong>Aviso N° {a.invoice_number}</strong>
                       <small>
@@ -165,7 +172,7 @@ export default function MiCuenta() {
                     </div>
                     <div className="list-item-derecha">
                       <span className={`badge badge-${a.status}`}>{etiquetaEstado(a.status)}</span>
-                      <strong>{fmtUSD(a.total)}</strong>
+                      <strong>{fmtUSD(a.subtotal)}</strong>
                     </div>
                   </li>
                 ))}
@@ -180,7 +187,11 @@ export default function MiCuenta() {
             ) : (
               <ul className="list-group">
                 {pagos.map((p) => (
-                  <li key={p.id} className="list-item">
+                  <li
+                    key={p.id}
+                    className="list-item list-item-clicable"
+                    onClick={() => setPagoDetalle(p.id)}
+                  >
                     <div>
                       <strong>{fmtFecha(p.payment_date)}</strong>
                       <small>
@@ -242,6 +253,18 @@ export default function MiCuenta() {
           </div>
         </>
       )}
+
+      <DetalleAviso
+        invoiceId={avisoDetalle}
+        abierto={!!avisoDetalle}
+        onCerrar={() => setAvisoDetalle(null)}
+        soloLectura
+      />
+      <DetallePago
+        paymentId={pagoDetalle}
+        abierto={!!pagoDetalle}
+        onCerrar={() => setPagoDetalle(null)}
+      />
     </>
   )
 }
@@ -252,6 +275,7 @@ function etiquetaEstado(s) {
     emitido: 'Pendiente',
     parcial: 'Abonado',
     pagado: 'Pagado',
+    exonerado: 'Exonerado',
     anulado: 'Anulado',
     reportado: 'Por verificar',
     confirmado: 'Confirmado',

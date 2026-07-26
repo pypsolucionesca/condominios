@@ -96,31 +96,48 @@ Deno.serve(async (req) => {
     const telefono = body.phone ? String(body.phone).trim() : null
     const esPrincipal = Boolean(body.is_primary)
 
-    // Rol de acceso: residente normal o restringido (solo paga, no ve
-    // tesorería ni otras unidades). Distinto de la relación con la unidad.
-    const rol = body.role === 'residente_restringido' ? 'residente_restringido' : 'resident'
+    // Rol de acceso solicitado. Admite residentes (con unidad) y también
+    // administradores/supervisores, que operan el sistema y NO requieren
+    // estar vinculados a una unidad. Cualquier otro valor cae a 'resident'.
+    const rolesValidos = ['resident', 'residente_restringido', 'supervisor', 'admin']
+    const rol = rolesValidos.includes(body.role) ? body.role : 'resident'
+
+    // ¿El rol necesita unidad? Solo los residentes. Admin y supervisor no.
+    const requiereUnidad = rol === 'resident' || rol === 'residente_restringido'
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: 'Correo electrónico inválido' }, 400)
     }
     if (!nombre) return json({ error: 'El nombre es obligatorio' }, 400)
-    if (!unitId) return json({ error: 'Debe indicar el apartamento' }, 400)
-    if (!['propietario', 'inquilino', 'autorizado'].includes(relacion)) {
+    if (requiereUnidad && !unitId) {
+      return json({ error: 'Debe indicar el apartamento' }, 400)
+    }
+    if (requiereUnidad && !['propietario', 'inquilino', 'autorizado'].includes(relacion)) {
       return json({ error: 'Tipo de relación inválido' }, 400)
     }
 
-    // 3) Confirmar que el apartamento existe
-    const { data: unidad, error: errUnidad } = await admin
-      .from('units')
-      .select('id, code, condominium_id')
-      .eq('id', unitId)
-      .maybeSingle()
+    // 3) Resolver el condominio y (si aplica) la unidad.
+    //    - Residente: el condominio sale de la unidad indicada.
+    //    - Admin/supervisor: no hay unidad; el condominio es el del
+    //      administrador que está invitando.
+    let condominiumId = perfil.condominium_id
+    let unidad = null
 
-    if (errUnidad) {
-      console.error('Error buscando el apartamento:', errUnidad)
-      return json({ error: `Error buscando el apartamento: ${errUnidad.message}` }, 500)
+    if (requiereUnidad) {
+      const { data: u, error: errUnidad } = await admin
+        .from('units')
+        .select('id, code, condominium_id')
+        .eq('id', unitId)
+        .maybeSingle()
+
+      if (errUnidad) {
+        console.error('Error buscando el apartamento:', errUnidad)
+        return json({ error: `Error buscando el apartamento: ${errUnidad.message}` }, 500)
+      }
+      if (!u) return json({ error: 'El apartamento no existe' }, 404)
+      unidad = u
+      condominiumId = u.condominium_id
     }
-    if (!unidad) return json({ error: 'El apartamento no existe' }, 404)
 
     // 4) Crear o reutilizar el usuario
     let userId
@@ -168,7 +185,7 @@ Deno.serve(async (req) => {
         national_id: cedula,
         phone: telefono,
         role: rol,
-        condominium_id: unidad.condominium_id,
+        condominium_id: condominiumId,
         is_active: true,
       },
       { onConflict: 'id' }
@@ -178,34 +195,59 @@ Deno.serve(async (req) => {
       return json({ error: `Error guardando el perfil: ${errUpsertPerfil.message}` }, 400)
     }
 
-    // 6) Vincular al apartamento
-    const { error: errVinculo } = await admin.from('unit_members').upsert(
-      { unit_id: unitId, user_id: userId, relation: relacion, is_primary: esPrincipal },
-      { onConflict: 'unit_id,user_id' }
-    )
-    if (errVinculo) {
-      console.error('Error vinculando al apartamento:', errVinculo)
-      return json({ error: `Error vinculando al apartamento: ${errVinculo.message}` }, 400)
+    // 6) Vincular al apartamento (solo residentes; admin/supervisor no
+    //    quedan atados a una unidad).
+    if (requiereUnidad && unidad) {
+      const { error: errVinculo } = await admin.from('unit_members').upsert(
+        { unit_id: unitId, user_id: userId, relation: relacion, is_primary: esPrincipal },
+        { onConflict: 'unit_id,user_id' }
+      )
+      if (errVinculo) {
+        console.error('Error vinculando al apartamento:', errVinculo)
+        return json({ error: `Error vinculando al apartamento: ${errVinculo.message}` }, 400)
+      }
     }
 
     const { error: errAudit } = await admin.from('audit_log').insert({
       actor_id: user.id,
       action: 'invitar_residente',
-      entity: 'unit_members',
-      entity_id: unitId,
-      payload: { email, unit_code: unidad.code, relation: relacion, role: rol, ya_existia: yaExistia },
+      entity: requiereUnidad ? 'unit_members' : 'profiles',
+      entity_id: requiereUnidad ? unitId : userId,
+      payload: {
+        email,
+        unit_code: unidad?.code || null,
+        relation: requiereUnidad ? relacion : null,
+        role: rol,
+        ya_existia: yaExistia,
+      },
     })
     if (errAudit) console.warn('No se pudo registrar en auditoría:', errAudit.message)
 
     console.log('Invitación completada para', email)
 
+    const nombreRol =
+      rol === 'admin'
+        ? 'administrador'
+        : rol === 'supervisor'
+        ? 'supervisor'
+        : null
+
+    let mensaje
+    if (unidad) {
+      mensaje = yaExistia
+        ? `El usuario ya existía y fue vinculado al apartamento ${unidad.code}.`
+        : `Invitación enviada a ${email} para el apartamento ${unidad.code}.`
+    } else {
+      mensaje = yaExistia
+        ? `El usuario ya existía y ahora tiene el rol de ${nombreRol}.`
+        : `Invitación enviada a ${email} como ${nombreRol}.`
+    }
+
     return json({
       ok: true,
       user_id: userId,
       ya_existia: yaExistia,
-      mensaje: yaExistia
-        ? `El usuario ya existía y fue vinculado al apartamento ${unidad.code}.`
-        : `Invitación enviada a ${email} para el apartamento ${unidad.code}.`,
+      mensaje,
     })
   } catch (err) {
     console.error('Error no controlado:', err)

@@ -118,6 +118,16 @@ export default function Campana() {
     cargar()
   }
 
+  // Limpia (borra) todas las notificaciones del usuario. Distinto de
+  // "marcar todas": aquí desaparecen de la lista, dejándola vacía.
+  const limpiarTodas = async () => {
+    if (!usuario) return
+    await supabase.from('notifications').delete().eq('user_id', usuario.id)
+    setSinLeer(0)
+    setItems([])
+    cargar()
+  }
+
   if (!usuario) return null
 
   return (
@@ -136,11 +146,18 @@ export default function Campana() {
         <div className="campana-panel">
           <div className="campana-cabecera">
             <strong>Notificaciones</strong>
-            {sinLeer > 0 && (
-              <button className="enlace-inline" onClick={marcarTodas}>
-                Marcar todas
-              </button>
-            )}
+            <div className="campana-acciones">
+              {sinLeer > 0 && (
+                <button className="enlace-inline" onClick={marcarTodas}>
+                  Marcar todas
+                </button>
+              )}
+              {items.length > 0 && (
+                <button className="enlace-inline enlace-tenue" onClick={limpiarTodas}>
+                  Limpiar
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="campana-lista">

@@ -242,8 +242,23 @@ export default function Tesoreria() {
     if (!formGasto.account_id) return setError('Seleccione la cuenta de origen.')
     if (!formGasto.description.trim()) return setError('Describa el gasto.')
 
-    const montoUSD = Number(formGasto.amount_usd)
-    if (!montoUSD || montoUSD <= 0) return setError('Indique el monto en dólares.')
+    // El monto en dólares es la base contable. Si el gasto es en bolívares
+    // y el usuario solo llenó el monto en Bs., se deriva el USD con la tasa
+    // del día para no bloquear el registro.
+    let montoUSD = Number(formGasto.amount_usd)
+    if ((!montoUSD || montoUSD <= 0) && formGasto.currency === 'VES') {
+      const bs = Number(formGasto.amount)
+      if (bs > 0 && tasaHoy?.tasa) {
+        montoUSD = Number((bs / tasaHoy.tasa).toFixed(2))
+      }
+    }
+    if (!montoUSD || montoUSD <= 0) {
+      return setError(
+        formGasto.currency === 'VES'
+          ? 'Indique el monto del gasto (en dólares o en bolívares con tasa registrada).'
+          : 'Indique el monto en dólares.'
+      )
+    }
 
     // Lo que sale de la cuenta: en bolívares se usa el equivalente,
     // que el administrador puede haber ajustado si el pago real difiere.
@@ -1413,6 +1428,11 @@ export default function Tesoreria() {
 
       <Panel abierto={panel === 'gasto'} titulo="Registrar gasto" onCerrar={cerrarPanel} ancho={600}>
         <form onSubmit={guardarGasto}>
+          {error && (
+            <Aviso tipo="error" onCerrar={() => setError(null)}>
+              {error}
+            </Aviso>
+          )}
           <div className="form-group">
             <label>Concepto *</label>
             <input
@@ -1422,6 +1442,33 @@ export default function Tesoreria() {
               placeholder="Compra de bombillos para la plaza"
               autoFocus
             />
+          </div>
+
+          <div className="form-group">
+            <label>¿Con qué moneda se paga? *</label>
+            <div className="opciones-moneda">
+              {['USD', 'VES'].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`opcion-moneda ${formGasto.currency === m ? 'activa' : ''}`}
+                  onClick={() =>
+                    setFormGasto({
+                      ...formGasto,
+                      currency: m,
+                      account_id: '',
+                      amount:
+                        m === 'VES' && tasaHoy?.tasa && formGasto.amount_usd
+                          ? (Number(formGasto.amount_usd) * tasaHoy.tasa).toFixed(2)
+                          : '',
+                    })
+                  }
+                >
+                  <strong>{m === 'USD' ? 'Dólares' : 'Bolívares'}</strong>
+                  <small>{m === 'USD' ? 'USD' : 'Bs.'}</small>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="form-group">
@@ -1450,33 +1497,6 @@ export default function Tesoreria() {
               La contabilidad del condominio se lleva en dólares. Indique aquí el valor del
               gasto, sin importar en qué moneda lo pague.
             </small>
-          </div>
-
-          <div className="form-group">
-            <label>¿Con qué moneda se paga? *</label>
-            <div className="opciones-moneda">
-              {['USD', 'VES'].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`opcion-moneda ${formGasto.currency === m ? 'activa' : ''}`}
-                  onClick={() =>
-                    setFormGasto({
-                      ...formGasto,
-                      currency: m,
-                      account_id: '',
-                      amount:
-                        m === 'VES' && tasaHoy?.tasa && formGasto.amount_usd
-                          ? (Number(formGasto.amount_usd) * tasaHoy.tasa).toFixed(2)
-                          : '',
-                    })
-                  }
-                >
-                  <strong>{m === 'USD' ? 'Dólares' : 'Bolívares'}</strong>
-                  <small>{m === 'USD' ? 'USD' : 'Bs.'}</small>
-                </button>
-              ))}
-            </div>
           </div>
 
           {formGasto.currency === 'VES' && (
@@ -1518,7 +1538,21 @@ export default function Tesoreria() {
                   min="0"
                   className="form-control"
                   value={formGasto.amount}
-                  onChange={(e) => setFormGasto({ ...formGasto, amount: e.target.value })}
+                  onChange={(e) => {
+                    const bs = e.target.value
+                    // Al ajustar el monto en bolívares se recalcula el
+                    // equivalente en dólares con la tasa del día. Así
+                    // amount_usd nunca queda vacío y el gasto se registra
+                    // aunque el usuario solo haya escrito el monto en Bs.
+                    setFormGasto({
+                      ...formGasto,
+                      amount: bs,
+                      amount_usd:
+                        tasaHoy?.tasa && bs
+                          ? (Number(bs) / tasaHoy.tasa).toFixed(2)
+                          : formGasto.amount_usd,
+                    })
+                  }}
                 />
                 <small className="texto-ayuda">
                   Ajústelo si el pago real difiere del cálculo, por redondeo del banco.
@@ -1589,9 +1623,27 @@ export default function Tesoreria() {
               <label>Proveedor</label>
               <input
                 className="form-control"
+                list="lista-proveedores"
                 value={formGasto.supplier}
                 onChange={(e) => setFormGasto({ ...formGasto, supplier: e.target.value })}
+                placeholder="Elija uno o escriba el nombre"
               />
+              {/* Sugiere los proveedores ya registrados (payees que no son
+                  empleados). El usuario puede elegir uno o escribir uno
+                  nuevo. Si no hay ninguno, se indica dónde crearlos. */}
+              <datalist id="lista-proveedores">
+                {personal
+                  .filter((p) => p.kind !== 'empleado')
+                  .map((p) => (
+                    <option key={p.id} value={p.full_name} />
+                  ))}
+              </datalist>
+              {personal.filter((p) => p.kind !== 'empleado').length === 0 && (
+                <small className="texto-ayuda">
+                  No hay proveedores registrados. Puede escribir el nombre aquí, o crearlos
+                  en la pestaña Proveedores para reutilizarlos.
+                </small>
+              )}
             </div>
 
             <div className="form-group">
@@ -2518,7 +2570,7 @@ export default function Tesoreria() {
                     <label>Tasa (Bs. por USD)</label>
                     <input
                       type="number"
-                      step="0.01"
+                      step="any"
                       min="0"
                       className="form-control"
                       value={pagoEmpleado.tasa_manual}

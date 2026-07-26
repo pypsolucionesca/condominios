@@ -22,7 +22,7 @@ const TIPOS_CARGO = [
  * un conflicto peor que el error original. Con pagos aplicados, la vía
  * correcta es anular y emitir de nuevo.
  */
-export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio }) {
+export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectura = false }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
@@ -238,20 +238,22 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio }) {
                 <Aviso tipo="aviso">{datos.motivo_bloqueo}</Aviso>
               )}
 
-              <div className="panel-acciones">
-                {datos.estado !== 'anulado' && (
-                  <button className="btn btn-danger" onClick={anular} disabled={enviando}>
-                    Anular
+              {!soloLectura && (
+                <div className="panel-acciones">
+                  {datos.estado !== 'anulado' && (
+                    <button className="btn btn-danger" onClick={anular} disabled={enviando}>
+                      Anular
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setEditando(true)}
+                    disabled={datos.estado === 'anulado'}
+                  >
+                    {datos.editable ? 'Editar' : 'Cambiar vencimiento'}
                   </button>
-                )}
-                <button
-                  className="btn btn-primary"
-                  onClick={() => setEditando(true)}
-                  disabled={datos.estado === 'anulado'}
-                >
-                  {datos.editable ? 'Editar' : 'Cambiar vencimiento'}
-                </button>
-              </div>
+                </div>
+              )}
             </>
           ) : (
             <>

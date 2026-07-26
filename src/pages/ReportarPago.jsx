@@ -27,6 +27,7 @@ export default function ReportarPago() {
   const [tasa, setTasa] = useState(null)
   const [tasaSinDato, setTasaSinDato] = useState(false)
   const [saldo, setSaldo] = useState(null)
+  const [pendientes, setPendientes] = useState([])
   const [recientes, setRecientes] = useState([])
   const [cargando, setCargando] = useState(true)
   const [enviando, setEnviando] = useState(false)
@@ -101,6 +102,14 @@ export default function ReportarPago() {
       .order('created_at', { ascending: false })
       .limit(5)
       .then(({ data }) => setRecientes(data || []))
+
+    // Avisos pendientes de la unidad, del más antiguo al más nuevo. Con
+    // esto se muestra al residente cómo se repartirá su pago: siempre
+    // cubre primero la deuda más vieja (no se puede pagar un mes nuevo
+    // dejando meses anteriores sin pagar).
+    supabase
+      .rpc('unit_pending_invoices', { p_unit_id: form.unit_id })
+      .then(({ data }) => setPendientes(data || []))
   }, [form.unit_id, exito])
 
   const elegirArchivo = async (e) => {
@@ -228,6 +237,33 @@ export default function ReportarPago() {
   const diferencia =
     saldo !== null && montoPagoUSD > 0 ? montoPagoUSD - saldo : null
 
+  // Distribución del pago: se recorre la deuda del mes más antiguo al más
+  // nuevo y se va cubriendo con el monto disponible. Así el residente ve,
+  // antes de reportar, exactamente qué avisos quedan cubiertos, cuál queda
+  // a medias y cuánto sobra o falta. Es la misma regla que aplica el
+  // administrador al confirmar (antiguo → nuevo).
+  const distribucion = (() => {
+    if (!(montoPagoUSD > 0) || pendientes.length === 0) return null
+    let restante = montoPagoUSD
+    const filas = pendientes.map((p) => {
+      const deuda = Number(p.pendiente) || 0
+      const aplicado = Math.min(restante, deuda)
+      restante = Math.max(0, restante - aplicado)
+      return {
+        id: p.id,
+        numero: p.invoice_number,
+        periodo: p.periodo,
+        deuda,
+        aplicado,
+        cubierto: aplicado >= deuda - 0.001,
+        parcial: aplicado > 0.001 && aplicado < deuda - 0.001,
+      }
+    })
+    const cubiertos = filas.filter((f) => f.cubierto).length
+    const sobra = restante // excedente que quedará a favor
+    return { filas, cubiertos, sobra }
+  })()
+
   return (
     <>
       <div className="pagina-cabecera">
@@ -353,26 +389,61 @@ export default function ReportarPago() {
             </Aviso>
           )}
 
+          {distribucion && (
+            <div className="distribucion-pago">
+              <div className="distribucion-titulo">
+                Cómo se aplicará su pago{' '}
+                <small>(primero los meses más antiguos)</small>
+              </div>
+              <ul className="distribucion-lista">
+                {distribucion.filas.map((f) => (
+                  <li
+                    key={f.id}
+                    className={
+                      f.cubierto
+                        ? 'distribucion-fila cubierta'
+                        : f.parcial
+                        ? 'distribucion-fila parcial'
+                        : 'distribucion-fila sin-cubrir'
+                    }
+                  >
+                    <div className="distribucion-mes">
+                      <strong>Aviso N° {f.numero}</strong>
+                      <small>{f.periodo}</small>
+                    </div>
+                    <div className="distribucion-montos">
+                      {f.cubierto ? (
+                        <span className="chip chip-exito">Se cubre · {fmtUSD(f.deuda)}</span>
+                      ) : f.parcial ? (
+                        <span className="chip chip-aviso">
+                          Abona {fmtUSD(f.aplicado)} de {fmtUSD(f.deuda)}
+                        </span>
+                      ) : (
+                        <span className="chip">Queda pendiente · {fmtUSD(f.deuda)}</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="distribucion-resumen">
+                {distribucion.cubiertos > 0 && (
+                  <span>
+                    Cubre {distribucion.cubiertos} aviso(s) completo(s).{' '}
+                  </span>
+                )}
+                {distribucion.sobra >= 0.01 && (
+                  <span className="texto-exito">
+                    Sobran {fmtUSD(distribucion.sobra)} que quedarán a su favor.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {form.currency === 'VES' && tasaSinDato && form.amount && (
             <Aviso tipo="aviso">
               No hay tasa registrada para la fecha del pago. Puede reportarlo igual:
               la administración fijará la tasa correcta al verificarlo.
-            </Aviso>
-          )}
-
-          {diferencia !== null && Math.abs(diferencia) >= 0.01 && (
-            <Aviso tipo={diferencia > 0 ? 'exito' : 'aviso'}>
-              {diferencia > 0 ? (
-                <>
-                  Está pagando <strong>{fmtUSD(diferencia)}</strong> más de lo que debe.
-                  El excedente quedará a su favor para el próximo recibo.
-                </>
-              ) : (
-                <>
-                  Está pagando <strong>{fmtUSD(Math.abs(diferencia))}</strong> menos que su
-                  saldo. Quedará ese monto pendiente por pagar.
-                </>
-              )}
             </Aviso>
           )}
 

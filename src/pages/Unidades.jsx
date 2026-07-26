@@ -109,6 +109,7 @@ export default function Unidades() {
       return (
         normalizar(u.code).includes(q) ||
         normalizar(u.location_name).includes(q) ||
+        normalizar(u.business_name).includes(q) ||
         miembros.some(
           (m) => m.unit_id === u.id && normalizar(m.profiles?.full_name).includes(q)
         )
@@ -424,7 +425,7 @@ export default function Unidades() {
       <div className="barra-filtros">
         <input
           className="form-control"
-          placeholder="Buscar por código, ubicación o residente…"
+          placeholder="Buscar por código, empresa, ubicación o residente…"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />

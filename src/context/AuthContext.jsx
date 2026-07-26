@@ -74,18 +74,15 @@ export function AuthProvider({ children }) {
 
       // Las unidades no deben impedir el acceso: un administrador no tiene
       // ninguna asignada, y un fallo aquí no justifica bloquear el ingreso.
+      // Se usa la RPC mis_unidades (SECURITY DEFINER) porque el join
+      // unit_members → units desde el cliente podía devolver vacío para
+      // administradores/supervisores vinculados a una unidad, por las
+      // políticas RLS. La RPC resuelve el vínculo del lado del servidor.
       let lista = []
       try {
-        const { data: mems, error: errMems } = await supabase
-          .from('unit_members')
-          .select('relation, is_primary, units:unit_id (id, code, tower, floor, condominium_id)')
-          .eq('user_id', userId)
-
+        const { data: mems, error: errMems } = await supabase.rpc('mis_unidades')
         if (errMems) throw errMems
-
-        lista = (mems || [])
-          .filter((m) => m.units)
-          .map((m) => ({ ...m.units, relation: m.relation, is_primary: m.is_primary }))
+        lista = mems || []
       } catch (errU) {
         console.warn('No se pudieron cargar las unidades:', errU)
       }

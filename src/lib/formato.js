@@ -113,6 +113,7 @@ const ETIQUETAS = {
   emitido: 'Pendiente',
   parcial: 'Abonado',
   pagado: 'Pagado',
+  exonerado: 'Exonerado',
   anulado: 'Anulado',
   // Estados de pagos
   reportado: 'Por verificar',
@@ -173,7 +174,13 @@ export function nombreUnidad(u) {
 /** Versión corta: "4-A · Parque Central" */
 export function nombreUnidadCorto(u) {
   if (!u) return '—'
-  return u.location_name ? `${u.code} · ${u.location_name}` : u.code
+  // En locales comerciales se destaca el nombre de la empresa junto al
+  // identificador. En apartamentos se usa la ubicación si existe.
+  const complemento =
+    u.unit_type === 'local_comercial'
+      ? u.business_name || u.location_name
+      : u.location_name
+  return complemento ? `${u.code} · ${complemento}` : u.code
 }
 
 /**

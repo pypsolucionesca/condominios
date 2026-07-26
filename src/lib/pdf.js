@@ -8,6 +8,16 @@ const OSCURO = [15, 23, 42]
 const ROJO = [220, 38, 38]
 const VERDE = [22, 163, 74]
 
+// Altura reservada al pie de página (numeración + nota + sello de
+// generación). Todas las tablas usan este margen inferior para que
+// autoTable salte de página ANTES de invadir esa zona, evitando que el
+// contenido pise el pie. Es la causa raíz del solapamiento en los PDF.
+const MARGEN_PIE = 26
+
+// Margen estándar de las tablas: laterales de siempre + inferior que
+// protege el pie. Se reutiliza en todos los autoTable.
+const MARGEN_TABLA = { left: 14, right: 14, bottom: MARGEN_PIE }
+
 /**
  * Encabezado común a todos los documentos.
  * Devuelve la coordenada Y donde puede empezar el contenido.
@@ -152,7 +162,7 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
       2: { cellWidth: 32, halign: 'right' },
     },
     styles: { fontSize: 9, cellPadding: 4 },
-    margin: { left: 14, right: 14 },
+    margin: MARGEN_TABLA,
   })
 
   y = doc.lastAutoTable.finalY + 8
@@ -176,7 +186,7 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
       0: { halign: 'right', cellWidth: ancho - 76 },
       1: { halign: 'right', cellWidth: 32, fontStyle: 'bold' },
     },
-    margin: { left: 14, right: 14 },
+    margin: MARGEN_TABLA,
     didParseCell: (data) => {
       if (data.row.index === filas.length - 1) {
         data.cell.styles.fontStyle = 'bold'
@@ -276,7 +286,7 @@ export function pdfEstadoCuenta({ unidad, movimientos, condominio, saldo, logoDa
       3: { cellWidth: 26, halign: 'right' },
       4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
     },
-    margin: { left: 14, right: 14 },
+    margin: MARGEN_TABLA,
   })
 
   pie(doc, condominio?.invoice_notes)
@@ -322,7 +332,7 @@ export function pdfInformeGastos({ condominio, gastos, cuentas, desde, hasta, lo
         1: { halign: 'right', cellWidth: 32 },
         2: { halign: 'right', cellWidth: 22 },
       },
-      margin: { left: 14, right: 14 },
+      margin: MARGEN_TABLA,
     })
     y = doc.lastAutoTable.finalY + 10
   }
@@ -355,7 +365,7 @@ export function pdfInformeGastos({ condominio, gastos, cuentas, desde, hasta, lo
       3: { cellWidth: 28 },
       4: { cellWidth: 26, halign: 'right' },
     },
-    margin: { left: 14, right: 14 },
+    margin: MARGEN_TABLA,
   })
 
   y = doc.lastAutoTable.finalY + 12
@@ -387,7 +397,7 @@ export function pdfInformeGastos({ condominio, gastos, cuentas, desde, hasta, lo
       headStyles: { fillColor: AZUL, fontSize: 9 },
       styles: { fontSize: 9, cellPadding: 3.5 },
       columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } },
-      margin: { left: 14, right: 14 },
+      margin: MARGEN_TABLA,
     })
   }
 
@@ -626,7 +636,7 @@ export function pdfHistorialBeneficiario({ beneficiario, pagos, condominio, desd
       3: { cellWidth: 28, halign: 'right' },
       4: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
     },
-    margin: { left: 14, right: 14 },
+    margin: MARGEN_TABLA,
   })
 
   y = doc.lastAutoTable.finalY + 12
