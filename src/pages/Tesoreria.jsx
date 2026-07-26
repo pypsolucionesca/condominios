@@ -290,6 +290,7 @@ export default function Tesoreria() {
         p_supplier: formGasto.supplier.trim() || null,
         p_invoice_ref: formGasto.invoice_ref.trim() || null,
         p_receipt_url: rutaRecibo,
+        p_rate: formGasto.currency === 'VES' ? tasaHoy?.tasa || null : null,
       })
       if (err) throw err
 
@@ -625,6 +626,9 @@ export default function Tesoreria() {
         p_supplier: pagoEmpleado.persona.full_name,
         p_invoice_ref: pagoEmpleado.operacion.trim() || null,
         p_receipt_url: null,
+        // Tasa que el usuario fijó para la fecha del pago. Permite registrar
+        // pagos viejos aunque no haya tasa oficial de ese día.
+        p_rate: pagoEmpleado.currency === 'VES' ? tasaEfectiva : null,
       })
       if (err) throw err
 
@@ -1507,57 +1511,61 @@ export default function Tesoreria() {
                   bolívares.
                 </Aviso>
               ) : (
-                <div className="conversion-bloque">
-                  <div className="conversion-linea">
-                    <span>Tasa del {fmtFecha(tasaHoy.fecha)}</span>
-                    <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
-                  </div>
-                  <div className="conversion-linea destacada">
-                    <span>Monto a pagar</span>
-                    <strong>
-                      {fmtMoneda(
-                        Number(formGasto.amount) ||
-                          Number(formGasto.amount_usd) * tasaHoy.tasa || 0,
-                        'VES'
-                      )}
-                    </strong>
-                  </div>
-                  {tasaHoy.obsoleta && (
-                    <small className="texto-aviso">
-                      La tasa tiene {tasaHoy.dias_antiguedad} días de antigüedad.
+                <>
+                  <div className="form-group">
+                    <label>Monto exacto pagado en bolívares</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-control"
+                      value={formGasto.amount}
+                      onChange={(e) => {
+                        const bs = e.target.value
+                        // Al ajustar el monto en bolívares se recalcula el
+                        // equivalente en dólares con la tasa del día. Así
+                        // amount_usd nunca queda vacío y el gasto se registra
+                        // aunque el usuario solo haya escrito el monto en Bs.
+                        setFormGasto({
+                          ...formGasto,
+                          amount: bs,
+                          amount_usd:
+                            tasaHoy?.tasa && bs
+                              ? (Number(bs) / tasaHoy.tasa).toFixed(2)
+                              : formGasto.amount_usd,
+                        })
+                      }}
+                    />
+                    <small className="texto-ayuda">
+                      Ajústelo si el pago real difiere del cálculo, por redondeo del banco.
                     </small>
-                  )}
-                </div>
-              )}
+                  </div>
 
-              <div className="form-group">
-                <label>Monto exacto pagado en bolívares</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="form-control"
-                  value={formGasto.amount}
-                  onChange={(e) => {
-                    const bs = e.target.value
-                    // Al ajustar el monto en bolívares se recalcula el
-                    // equivalente en dólares con la tasa del día. Así
-                    // amount_usd nunca queda vacío y el gasto se registra
-                    // aunque el usuario solo haya escrito el monto en Bs.
-                    setFormGasto({
-                      ...formGasto,
-                      amount: bs,
-                      amount_usd:
-                        tasaHoy?.tasa && bs
-                          ? (Number(bs) / tasaHoy.tasa).toFixed(2)
-                          : formGasto.amount_usd,
-                    })
-                  }}
-                />
-                <small className="texto-ayuda">
-                  Ajústelo si el pago real difiere del cálculo, por redondeo del banco.
-                </small>
-              </div>
+                  {/* La tasa y el total a pagar van al final, como resumen
+                      de lo ingresado arriba. */}
+                  <div className="conversion-bloque">
+                    <div className="conversion-linea">
+                      <span>Tasa del {fmtFecha(tasaHoy.fecha)}</span>
+                      <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
+                    </div>
+                    <div className="conversion-linea destacada">
+                      <span>Monto a pagar</span>
+                      <strong>
+                        {fmtMoneda(
+                          Number(formGasto.amount) ||
+                            Number(formGasto.amount_usd) * tasaHoy.tasa || 0,
+                          'VES'
+                        )}
+                      </strong>
+                    </div>
+                    {tasaHoy.obsoleta && (
+                      <small className="texto-aviso">
+                        La tasa tiene {tasaHoy.dias_antiguedad} días de antigüedad.
+                      </small>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -2510,25 +2518,16 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Monto en dólares *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
+              <label>Fecha del pago *</label>
+              <CampoFecha
                 className="form-control"
-                value={pagoEmpleado.amount_usd}
-                onChange={(e) => {
-                  const usd = e.target.value
-                  setPagoEmpleado({
-                    ...pagoEmpleado,
-                    amount_usd: usd,
-                    amount:
-                      pagoEmpleado.currency === 'VES' && tasaHoy?.tasa && usd
-                        ? (Number(usd) * tasaHoy.tasa).toFixed(2)
-                        : pagoEmpleado.amount,
-                  })
-                }}
+                value={pagoEmpleado.payment_date}
+                onChange={(v) => setPagoEmpleado({ ...pagoEmpleado, payment_date: v })}
               />
+              <small className="texto-ayuda">
+                Determina la tasa. Para un pago de fecha pasada, indique la tasa de ese día
+                más abajo.
+              </small>
             </div>
 
             <div className="form-group">
@@ -2561,6 +2560,28 @@ export default function Tesoreria() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="form-group">
+              <label>Monto en dólares *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="form-control"
+                value={pagoEmpleado.amount_usd}
+                onChange={(e) => {
+                  const usd = e.target.value
+                  setPagoEmpleado({
+                    ...pagoEmpleado,
+                    amount_usd: usd,
+                    amount:
+                      pagoEmpleado.currency === 'VES' && tasaHoy?.tasa && usd
+                        ? (Number(usd) * tasaHoy.tasa).toFixed(2)
+                        : pagoEmpleado.amount,
+                  })
+                }}
+              />
             </div>
 
             {pagoEmpleado.currency === 'VES' && (
@@ -2618,17 +2639,6 @@ export default function Tesoreria() {
             )}
 
             <div className="grid-form">
-              <div className="form-group">
-                <label>Fecha *</label>
-                <CampoFecha
-                className="form-control"
-                  value={pagoEmpleado.payment_date}
-                  onChange={(v) =>
-                    setPagoEmpleado({ ...pagoEmpleado, payment_date: v })
-                  }
-                />
-              </div>
-
               <div className="form-group">
                 <label>Cuenta de origen *</label>
                 <select

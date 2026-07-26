@@ -21,6 +21,7 @@ const FORM_UNIDAD = {
   location_name: '',
   floor: '',
   area_m2: '',
+  fixed_fee: '',
   notes: '',
   business_name: '',
   tax_id: '',
@@ -49,6 +50,7 @@ export default function Unidades() {
   const [enviando, setEnviando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('')
 
   const [panelUnidad, setPanelUnidad] = useState(false)
   const [panelInvitar, setPanelInvitar] = useState(false)
@@ -105,6 +107,16 @@ export default function Unidades() {
     const q = normalizar(busqueda)
     return unidades.filter((u) => {
       if (filtroTipo && u.unit_type !== filtroTipo) return false
+
+      // Filtro rápido por situación, útil cuando hay muchas unidades.
+      if (filtroEstado) {
+        const saldo = saldos[u.id] || 0
+        const tieneResidente = miembros.some((m) => m.unit_id === u.id)
+        if (filtroEstado === 'debe' && saldo <= 0) return false
+        if (filtroEstado === 'aldia' && saldo > 0) return false
+        if (filtroEstado === 'sin_residente' && tieneResidente) return false
+      }
+
       if (!q) return true
       return (
         normalizar(u.code).includes(q) ||
@@ -115,7 +127,7 @@ export default function Unidades() {
         )
       )
     })
-  }, [unidades, miembros, busqueda, filtroTipo])
+  }, [unidades, miembros, saldos, busqueda, filtroTipo, filtroEstado])
 
   const activas = unidades.filter((u) => u.is_active)
   const sumaAlicuotas = activas.reduce((s, u) => s + Number(u.aliquot || 0), 0)
@@ -140,6 +152,7 @@ export default function Unidades() {
       location_name: u.location_name || '',
       floor: u.floor || '',
       area_m2: u.area_m2 ?? '',
+      fixed_fee: u.fixed_fee ?? '',
       notes: u.notes || '',
       business_name: u.business_name || '',
       tax_id: u.tax_id || '',
@@ -171,6 +184,9 @@ export default function Unidades() {
         location_name: formUnidad.location_name.trim() || null,
         floor: formUnidad.floor.trim() || null,
         area_m2: area,
+        // Cuota fija propia de la unidad. Si se deja vacía, la unidad toma
+        // la cuota general del condominio (lo resuelve unit_effective_fee).
+        fixed_fee: formUnidad.fixed_fee === '' ? null : Number(formUnidad.fixed_fee),
         notes: formUnidad.notes.trim() || null,
         business_name: esLocal ? formUnidad.business_name.trim() || null : null,
         tax_id: esLocal ? formUnidad.tax_id.trim() || null : null,
@@ -442,7 +458,40 @@ export default function Unidades() {
             </option>
           ))}
         </select>
+        <select
+          className="form-control"
+          style={{ maxWidth: 200 }}
+          value={filtroEstado}
+          onChange={(e) => setFiltroEstado(e.target.value)}
+        >
+          <option value="">Cualquier situación</option>
+          <option value="debe">Con deuda</option>
+          <option value="aldia">Al día</option>
+          <option value="sin_residente">Sin residente</option>
+        </select>
       </div>
+
+      {(busqueda || filtroTipo || filtroEstado) && (
+        <p className="texto-ayuda" style={{ marginTop: -8, marginBottom: 12 }}>
+          {visibles.length} unidad(es) encontrada(s)
+          {(busqueda || filtroTipo || filtroEstado) && (
+            <>
+              {' · '}
+              <button
+                type="button"
+                className="enlace-inline"
+                onClick={() => {
+                  setBusqueda('')
+                  setFiltroTipo('')
+                  setFiltroEstado('')
+                }}
+              >
+                Limpiar filtros
+              </button>
+            </>
+          )}
+        </p>
+      )}
 
       {visibles.length === 0 ? (
         <div className="card">
@@ -701,6 +750,24 @@ export default function Unidades() {
               />
               <small className="texto-ayuda">Determina la alícuota. Se recalcula sola.</small>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Cuota fija propia (USD)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="form-control"
+              value={formUnidad.fixed_fee}
+              onChange={(e) => setFormUnidad({ ...formUnidad, fixed_fee: e.target.value })}
+              placeholder="Dejar vacío para usar la cuota general"
+            />
+            <small className="texto-ayuda">
+              Monto fijo mensual solo para esta unidad (útil para un puesto o espacio con
+              cuota distinta). Si se deja vacío, la unidad paga la cuota general del
+              condominio.
+            </small>
           </div>
 
           <SelectorImagen

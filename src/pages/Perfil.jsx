@@ -14,7 +14,7 @@ const VAPID = import.meta.env.VITE_VAPID_PUBLIC_KEY
 const VERSION_APP = '1.6.0'
 
 export default function Perfil() {
-  const { perfil, usuario, unidades, recargarPerfil, cambiarContrasena } = useAuth()
+  const { perfil, usuario, unidades, esRestringido, recargarPerfil, cambiarContrasena } = useAuth()
 
   const [form, setForm] = useState({ full_name: '', national_id: '', phone: '' })
   const [avatar, setAvatar] = useState(null)
@@ -41,7 +41,22 @@ export default function Perfil() {
       .from('notification_preferences')
       .select('*')
       .maybeSingle()
-      .then(({ data }) => setPrefs(data))
+      .then(({ data }) => {
+        // Si el usuario aún no tiene preferencias guardadas, se asumen
+        // TODAS activas por defecto (así recibe avisos y pagos desde el
+        // inicio). El resumen semanal se activa salvo para restringidos,
+        // que no participan de la información general del condominio.
+        setPrefs(
+          data || {
+            email_avisos: true,
+            push_avisos: true,
+            email_pagos: true,
+            push_pagos: true,
+            email_resumen: !esRestringido,
+            push_resumen: !esRestringido,
+          }
+        )
+      })
 
     // Si ya hay permiso concedido, re-verifica y regenera la suscripción
     // por si se perdió (SW actualizado, datos limpiados, guardado fallido).
@@ -77,6 +92,59 @@ export default function Perfil() {
         .eq('id', usuario.id)
 
       if (err) throw err
+
+      // Imagen unificada: si el usuario cambió su imagen y está vinculado a
+      // unidades, esa misma imagen pasa a ser el logo de su(s) unidad(es).
+      // Así lo que él ve como su avatar es lo mismo que ve el administrador
+      // en la ficha y lo que sale en la lista y los recibos. El usuario solo
+      // controla la imagen; no modifica ningún otro dato de la unidad.
+      if (avatar && avatarUrl && unidades.length > 0) {
+        const ids = unidades.map((u) => u.id)
+        const { error: errLogo } = await supabase
+          .from('units')
+          .update({ logo_url: avatarUrl })
+          .in('id', ids)
+        if (errLogo) console.warn('No se pudo actualizar el logo de la unidad:', errLogo.message)
+      }
+
+      // Imagen unificada: si el usuario cambió su foto y está vinculado a
+      // una o más unidades, esa misma imagen pasa a ser el logo de sus
+      // unidades. Así la foto que ve el usuario y la que ve el
+      // administrador en la ficha son la misma, sin duplicados. El admin
+      // también puede cambiar este logo desde la ficha de la unidad.
+      if (avatar && avatarUrl && unidades.length > 0) {
+        const idsUnidades = unidades.map((u) => u.id)
+        const { error: errLogo } = await supabase
+          .from('units')
+          .update({ logo_url: avatarUrl })
+          .in('id', idsUnidades)
+        if (errLogo) console.warn('No se pudo sincronizar el logo de la unidad:', errLogo)
+      }
+
+      // Imagen unificada: si el usuario subió una nueva foto y está
+      // vinculado a una o más unidades, esa misma imagen pasa a ser el
+      // logo de la(s) unidad(es). Así la imagen que ve el residente en su
+      // perfil es la misma que ve el administrador en la ficha, sin
+      // duplicados. El usuario no puede tocar ningún otro dato de la ficha.
+      if (avatar && unidades.length > 0) {
+        const ids = unidades.map((u) => u.id)
+        const { error: errLogo } = await supabase
+          .from('units')
+          .update({ logo_url: avatarUrl })
+          .in('id', ids)
+        if (errLogo) console.warn('No se pudo unificar el logo de la unidad:', errLogo)
+      }
+
+      // La imagen del usuario es la MISMA que el logo de su unidad: al
+      // cambiarla aquí, se refleja también en la ficha que ve el admin y
+      // en la lista de unidades. La RPC solo toca la columna logo_url de
+      // las unidades donde el usuario es miembro (no otros datos).
+      if (avatar && avatarUrl && unidades.length > 0) {
+        const { error: errLogo } = await supabase.rpc('actualizar_logo_mi_unidad', {
+          p_logo_url: avatarUrl,
+        })
+        if (errLogo) console.warn('No se pudo actualizar el logo de la unidad:', errLogo.message)
+      }
 
       setAviso('Perfil actualizado.')
       setAvatar(null)
@@ -284,14 +352,16 @@ export default function Perfil() {
                 onPush={(v) => guardarPrefs({ push_pagos: v })}
               />
 
-              <FilaPref
-                etiqueta="Resumen semanal"
-                descripcion="Gastos e ingresos del condominio"
-                email={prefs.email_resumen}
-                push={prefs.push_resumen}
-                onEmail={(v) => guardarPrefs({ email_resumen: v })}
-                onPush={(v) => guardarPrefs({ push_resumen: v })}
-              />
+              {!esRestringido && (
+                <FilaPref
+                  etiqueta="Resumen semanal"
+                  descripcion="Gastos e ingresos del condominio"
+                  email={prefs.email_resumen}
+                  push={prefs.push_resumen}
+                  onEmail={(v) => guardarPrefs({ email_resumen: v })}
+                  onPush={(v) => guardarPrefs({ push_resumen: v })}
+                />
+              )}
             </div>
           </>
         )}

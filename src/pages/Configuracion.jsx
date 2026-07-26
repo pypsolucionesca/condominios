@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtNumero, fmtFecha, fmtHoraLocal, hoy } from '../lib/formato'
-import { Aviso, Cargador } from '../components/UI'
+import { Aviso, Cargador, SelectorImagen } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import GestionUsuarios from '../components/GestionUsuarios'
+import { subirLogoCondominio } from '../lib/imagenes'
 
 const ORIGEN = {
   'dolarapi-oficial': 'BCV automático',
@@ -24,6 +25,7 @@ export default function Configuracion() {
   const [salud, setSalud] = useState(null)
   const [actualizando, setActualizando] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [logoArchivo, setLogoArchivo] = useState(null)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
 
@@ -108,6 +110,16 @@ export default function Configuracion() {
 
     setGuardando(true)
     try {
+      // Si se eligió un logo nuevo, se sube primero y se guarda su URL.
+      // Este logo es el que aparece en los reportes/recibos (distinto del
+      // logo de la marca de la app). Así cada condominio personaliza sus
+      // documentos.
+      let logoUrl = condominio?.logo_url || null
+      if (logoArchivo) {
+        const res = await subirLogoCondominio(logoArchivo, perfil.condominium_id)
+        logoUrl = res.url
+      }
+
       const { error: err } = await supabase
         .from('condominiums')
         .update({
@@ -123,12 +135,14 @@ export default function Configuracion() {
           invoice_notes: form.invoice_notes.trim() || null,
           auto_billing: form.auto_billing,
           auto_billing_day: Number(form.auto_billing_day) || 1,
+          logo_url: logoUrl,
         })
         .eq('id', perfil.condominium_id)
 
       if (err) throw err
 
       setAviso('Configuración guardada.')
+      setLogoArchivo(null)
       recargarPerfil()
     } catch (err) {
       setError(mensajeError(err))
@@ -264,6 +278,19 @@ export default function Configuracion() {
         {/* -------------------------------------------------- facturación */}
         <div className="card">
           <h2 className="card-header">Cobro de cuotas</h2>
+
+          <div className="form-group">
+            <label>Logo del condominio</label>
+            <SelectorImagen
+              valorActual={condominio?.logo_url}
+              onSeleccion={setLogoArchivo}
+              ayuda="Logo para avisos y recibos"
+            />
+            <small className="texto-ayuda">
+              Aparece en los avisos, recibos y reportes en PDF. Es el logo de su condominio
+              (distinto de la marca de la aplicación).
+            </small>
+          </div>
 
           <div className="form-group">
             <label>Nombre del condominio</label>
@@ -435,9 +462,9 @@ export default function Configuracion() {
             <div>
               <strong>Cuentas abiertas a todos</strong>
               <small>
-                Todos los residentes pueden ver los gastos del condominio, los saldos de banco y
-                caja, y los pagos al personal. La escritura sigue siendo exclusiva del
-                administrador.
+                Los residentes (no los restringidos) pueden ver los gastos del condominio, los
+                saldos de banco y caja, y los pagos al personal. La escritura sigue siendo
+                exclusiva del administrador.
               </small>
             </div>
           </label>
@@ -454,8 +481,9 @@ export default function Configuracion() {
               <option value="detallado">Detallada · todos ven quién debe y cuánto</option>
             </select>
             <small className="texto-ayuda">
-              La opción detallada expone datos individuales. Conviene que sea una decisión de
-              asamblea, no del administrador por su cuenta.
+              La opción detallada expone datos individuales (visibles para los residentes no
+              restringidos). Conviene que sea una decisión de asamblea, no del administrador
+              por su cuenta.
             </small>
           </div>
         </div>

@@ -115,6 +115,19 @@ export function subirLogoUnidad(file, unitId) {
   })
 }
 
+/**
+ * Sube el logo del condominio (el que aparece en avisos, recibos y
+ * reportes en PDF). Es distinto de la marca de la aplicación: cada
+ * condominio personaliza sus documentos con su propia imagen.
+ */
+export function subirLogoCondominio(file, condominiumId) {
+  return subirImagen(file, 'logos', `condominio/${condominiumId}`, {
+    maxAncho: 512,
+    maxAlto: 512,
+    calidad: 0.85,
+  })
+}
+
 /** Sube el avatar del usuario. La carpeta debe ser su propio id. */
 export function subirAvatar(file, userId) {
   return subirImagen(file, 'avatars', `${userId}/perfil`, {

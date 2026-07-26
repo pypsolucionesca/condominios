@@ -46,7 +46,7 @@ export function Panel({ abierto, titulo, onCerrar, children, ancho = 480 }) {
  */
 export function MenuAcciones({ acciones }) {
   const [abierto, setAbierto] = useState(false)
-  const [lado, setLado] = useState('derecha')
+  const [coords, setCoords] = useState(null)
   const ref = useRef(null)
   const botonRef = useRef(null)
 
@@ -59,15 +59,26 @@ export function MenuAcciones({ acciones }) {
       if (ref.current && !ref.current.contains(e.target)) setAbierto(false)
     }
     const esc = (e) => e.key === 'Escape' && setAbierto(false)
+    // Si la página se desplaza o cambia de tamaño con el menú abierto, se
+    // cierra: sus coordenadas fijas dejarían de coincidir con el botón.
+    const cerrarPorMovimiento = () => setAbierto(false)
 
-    document.addEventListener('mousedown', fuera)
+    // Se escucha 'click' (no 'mousedown') para cerrar al tocar fuera: así
+    // el mismo gesto que abre el menú no lo cierra de inmediato.
+    document.addEventListener('click', fuera)
     document.addEventListener('keydown', esc)
+    if (!esMovil) {
+      window.addEventListener('scroll', cerrarPorMovimiento, true)
+      window.addEventListener('resize', cerrarPorMovimiento)
+    }
 
     if (esMovil) document.body.style.overflow = 'hidden'
 
     return () => {
-      document.removeEventListener('mousedown', fuera)
+      document.removeEventListener('click', fuera)
       document.removeEventListener('keydown', esc)
+      window.removeEventListener('scroll', cerrarPorMovimiento, true)
+      window.removeEventListener('resize', cerrarPorMovimiento)
       document.body.style.overflow = ''
     }
   }, [abierto, esMovil])
@@ -75,13 +86,22 @@ export function MenuAcciones({ acciones }) {
   const alternar = (e) => {
     e.stopPropagation()
 
-    // Cuando falta espacio a la derecha, el menú debe anclarse por su
-    // borde derecho (right:0) y crecer hacia la izquierda, para no salirse.
-    // Cuando hay espacio de sobra, se ancla a la izquierda y crece a la derecha.
+    // En escritorio el menú se posiciona con coordenadas FIJAS respecto a
+    // la ventana, calculadas desde el botón. Así escapa de cualquier
+    // contenedor con overflow (como la tabla con scroll horizontal), que
+    // de otro modo recortaría el menú y lo dejaría "pisado".
     if (!abierto && botonRef.current && !esMovil) {
       const caja = botonRef.current.getBoundingClientRect()
+      const anchoMenu = 200
       const espacioDerecha = window.innerWidth - caja.right
-      setLado(espacioDerecha < 211 ? 'derecha' : 'izquierda')
+      // Si no hay espacio a la derecha, se alinea el borde derecho del menú
+      // con el borde derecho del botón (crece hacia la izquierda).
+      const izquierda =
+        espacioDerecha < anchoMenu ? caja.right - anchoMenu : caja.left
+      setCoords({
+        top: caja.bottom + 6,
+        left: Math.max(8, izquierda),
+      })
     }
 
     setAbierto((v) => !v)
@@ -113,6 +133,7 @@ export function MenuAcciones({ acciones }) {
         ref={botonRef}
         className="menu-disparador"
         onClick={alternar}
+        onMouseDown={(e) => e.stopPropagation()}
         aria-label="Acciones"
         aria-expanded={abierto}
       >
@@ -131,8 +152,13 @@ export function MenuAcciones({ acciones }) {
         </div>
       )}
 
-      {abierto && !esMovil && (
-        <div className={`menu-lista lado-${lado}`}>{opciones}</div>
+      {abierto && !esMovil && coords && (
+        <div
+          className="menu-lista menu-flotante"
+          style={{ position: 'fixed', top: coords.top, left: coords.left }}
+        >
+          {opciones}
+        </div>
       )}
     </div>
   )

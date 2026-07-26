@@ -556,6 +556,15 @@ html, body {
   min-width: 190px; z-index: 50; overflow: hidden;
   max-width: calc(100vw - 24px);
 }
+/* Variante flotante: posición fija respecto a la ventana. Se usa en
+   escritorio para que el menú no quede recortado por contenedores con
+   overflow (tablas con scroll). El z-index alto lo mantiene por encima. */
+.menu-lista.menu-flotante {
+  position: fixed;
+  right: auto; top: auto;
+  width: 200px; min-width: 200px;
+  z-index: 3000;
+}
 .menu-opcion {
   display: flex; align-items: center; gap: 10px;
   width: 100%; padding: 11px 15px;
@@ -2215,4 +2224,11 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--texto, #0f172a);
   text-align: right;
   word-break: break-word;
+}
+
+/* Editor de pago dentro del detalle */
+.editor-pago {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--borde, #e2e8f0);
 }

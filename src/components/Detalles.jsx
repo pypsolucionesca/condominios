@@ -383,15 +383,18 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
 }
 
 /** Detalle de un pago, con su comprobante y los avisos que cubrió. */
-export function DetallePago({ paymentId, abierto, onCerrar }) {
+export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = false, esAdmin = false, onCambio }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [urlRecibo, setUrlRecibo] = useState(null)
+  const [editando, setEditando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [confirmacion, setConfirmacion] = useState(null)
+  const [form, setForm] = useState({})
 
-  useEffect(() => {
-    if (!abierto || !paymentId) return
-
+  const cargarDetalle = useCallback(() => {
+    if (!paymentId) return
     setCargando(true)
     supabase
       .rpc('payment_detail', { p_payment_id: paymentId })
@@ -401,12 +404,82 @@ export function DetallePago({ paymentId, abierto, onCerrar }) {
           return
         }
         setDatos(data)
+        setForm({
+          amount: data.monto ?? '',
+          currency: data.moneda ?? 'USD',
+          payment_date: data.fecha ?? '',
+          reference: data.referencia ?? '',
+          notes: data.notas ?? '',
+          rate: data.tasa ?? '',
+        })
         if (data.comprobante) {
           setUrlRecibo(await urlComprobante(data.comprobante))
         }
       })
       .finally(() => setCargando(false))
-  }, [abierto, paymentId])
+  }, [paymentId])
+
+  useEffect(() => {
+    if (!abierto || !paymentId) return
+    setEditando(false)
+    cargarDetalle()
+  }, [abierto, paymentId, cargarDetalle])
+
+  // Guardar la edición de un pago reportado
+  const guardarEdicion = async (e) => {
+    e.preventDefault()
+    setError(null)
+    if (!(Number(form.amount) > 0)) {
+      setError('El monto debe ser mayor que cero.')
+      return
+    }
+    setEnviando(true)
+    try {
+      const { error: err } = await supabase.rpc('update_payment', {
+        p_payment_id: paymentId,
+        p_amount: Number(form.amount),
+        p_currency: form.currency,
+        p_payment_date: form.payment_date,
+        p_reference: form.reference || null,
+        p_notes: form.notes || null,
+        p_rate: esAdmin && form.rate ? Number(form.rate) : null,
+      })
+      if (err) throw err
+      setEditando(false)
+      cargarDetalle()
+      onCambio?.()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  // Anular un pago confirmado (con motivo)
+  const anular = () => {
+    setConfirmacion({
+      titulo: 'Anular pago confirmado',
+      mensaje:
+        'Se revertirá el abono en el estado de cuenta, el ingreso en tesorería y la aplicación a los avisos. El pago quedará como anulado. Indique el motivo.',
+      requiereMotivo: true,
+      accion: async (motivo) => {
+        setError(null)
+        try {
+          const { error: err } = await supabase.rpc('void_payment', {
+            p_payment_id: paymentId,
+            p_reason: motivo,
+          })
+          if (err) throw err
+          setConfirmacion(null)
+          cargarDetalle()
+          onCambio?.()
+        } catch (err) {
+          setError(mensajeError(err))
+          setConfirmacion(null)
+        }
+      },
+    })
+  }
 
   return (
     <Panel abierto={abierto} titulo="Detalle del pago" onCerrar={onCerrar} ancho={560}>
@@ -511,8 +584,122 @@ export function DetallePago({ paymentId, abierto, onCerrar }) {
               {fmtHoraLocal(datos.confirmado_en)}
             </small>
           )}
+
+          {/* Acciones de gestión: editar mientras está reportado; anular si
+              ya fue confirmado (solo admin). */}
+          {puedeGestionar && !editando && (
+            <div className="panel-acciones">
+              {datos.estado === 'reportado' && (
+                <button
+                  type="button"
+                  className="btn btn-secundario"
+                  onClick={() => setEditando(true)}
+                >
+                  Editar
+                </button>
+              )}
+              {datos.estado === 'confirmado' && esAdmin && (
+                <button type="button" className="btn btn-danger" onClick={anular}>
+                  Anular pago
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Formulario de edición (solo para pagos reportados) */}
+          {puedeGestionar && editando && (
+            <form onSubmit={guardarEdicion} className="editor-pago">
+              <h4 className="subtitulo">Corregir el pago</h4>
+              <div className="grid-form">
+                <div className="form-group">
+                  <label>Monto *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="form-control"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Moneda *</label>
+                  <select
+                    className="form-control"
+                    value={form.currency}
+                    onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                  >
+                    <option value="USD">Dólares (USD)</option>
+                    <option value="VES">Bolívares (Bs.)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Fecha del pago *</label>
+                <CampoFecha
+                  value={form.payment_date}
+                  onChange={(v) => setForm({ ...form, payment_date: v })}
+                />
+              </div>
+              {esAdmin && form.currency === 'VES' && (
+                <div className="form-group">
+                  <label>Tasa (Bs. por USD)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    className="form-control"
+                    value={form.rate}
+                    onChange={(e) => setForm({ ...form, rate: e.target.value })}
+                    placeholder="Vacío = tasa según la fecha"
+                  />
+                  <small className="texto-ayuda">
+                    Déjela vacía para usar la tasa oficial de la fecha del pago.
+                  </small>
+                </div>
+              )}
+              <div className="form-group">
+                <label>Referencia</label>
+                <input
+                  className="form-control"
+                  value={form.reference}
+                  onChange={(e) => setForm({ ...form, reference: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Nota</label>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                />
+              </div>
+              <div className="panel-acciones">
+                <button
+                  type="button"
+                  className="btn btn-secundario"
+                  onClick={() => {
+                    setEditando(false)
+                    cargarDetalle()
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button className="btn btn-primary" disabled={enviando}>
+                  {enviando ? 'Guardando…' : 'Guardar cambios'}
+                </button>
+              </div>
+            </form>
+          )}
         </>
       ) : null}
+
+      <ConfirmarMotivo
+        datos={confirmacion}
+        enviando={false}
+        onCancelar={() => setConfirmacion(null)}
+      />
     </Panel>
   )
 }

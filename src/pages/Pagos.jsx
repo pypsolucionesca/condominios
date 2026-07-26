@@ -8,7 +8,7 @@ import FormularioPago from '../components/FormularioPago'
 import { DetallePago } from '../components/Detalles'
 
 export default function Pagos() {
-  const { perfil } = useAuth()
+  const { perfil, puedeOperar, esAdmin } = useAuth()
 
   const [pagos, setPagos] = useState([])
   const [cuentas, setCuentas] = useState([])
@@ -419,6 +419,9 @@ export default function Pagos() {
         paymentId={pagoDetalle}
         abierto={Boolean(pagoDetalle)}
         onCerrar={() => setPagoDetalle(null)}
+        puedeGestionar={puedeOperar}
+        esAdmin={esAdmin}
+        onCambio={cargar}
       />
 
       <ConfirmarConMotivo
