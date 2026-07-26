@@ -16,7 +16,7 @@ const PESTANAS = [
 ]
 
 export default function Tesoreria() {
-  const { perfil, esAdmin, condominio } = useAuth()
+  const { perfil, esAdmin, puedeOperar, condominio } = useAuth()
 
   const [pestana, setPestana] = useState('cuentas')
   const [cuentas, setCuentas] = useState([])
@@ -846,7 +846,7 @@ export default function Tesoreria() {
         <div className="card">
           <div className="card-header-flex">
             <h2>Cuentas</h2>
-            {esAdmin && (
+            {puedeOperar && (
               <div className="grupo-botones">
                 <button
                   className="btn btn-secundario btn-accion"
@@ -892,7 +892,7 @@ export default function Tesoreria() {
                 >
                   <div className="cuenta-cabecera" onClick={(e) => e.stopPropagation()}>
                     <strong>{c.name}</strong>
-                    {esAdmin && (
+                    {puedeOperar && (
                       <MenuAcciones
                         acciones={[
                           {
@@ -900,13 +900,20 @@ export default function Tesoreria() {
                             texto: 'Ver movimientos',
                             onClick: () => setLibroCuenta(c.id),
                           },
-                          {
-                            icono: '🗑️',
-                            texto: 'Eliminar',
-                            peligro: true,
-                            onClick: () => eliminarCuenta(c),
-                            titulo: 'Solo si no tiene movimientos',
-                          },
+                          // Eliminar una cuenta es una acción de gobierno:
+                          // solo el administrador. El backend además la
+                          // restringe, así que no se muestra al supervisor.
+                          ...(esAdmin
+                            ? [
+                                {
+                                  icono: '🗑️',
+                                  texto: 'Eliminar',
+                                  peligro: true,
+                                  onClick: () => eliminarCuenta(c),
+                                  titulo: 'Solo si no tiene movimientos',
+                                },
+                              ]
+                            : []),
                           {
                             icono: c.is_active ? '🚫' : '✅',
                             texto: c.is_active ? 'Desactivar' : 'Reactivar',
@@ -967,7 +974,7 @@ export default function Tesoreria() {
         <div className="card">
           <div className="card-header-flex">
             <h2>Gastos</h2>
-            {esAdmin && (
+            {puedeOperar && (
               <button
                 className="btn btn-primary btn-accion"
                 onClick={() => {
@@ -1052,7 +1059,7 @@ export default function Tesoreria() {
         <div className="card">
           <div className="card-header-flex">
             <h2>{pestana === 'personal' ? 'Personal' : 'Proveedores'}</h2>
-            {esAdmin && (
+            {puedeOperar && (
               <button
                 className="btn btn-primary btn-accion"
                 onClick={() => {
@@ -1129,7 +1136,7 @@ export default function Tesoreria() {
                   </div>
                   <div className="list-item-derecha" onClick={(e) => e.stopPropagation()}>
                     {!p.is_active && <span className="chip chip-inactivo">Inactivo</span>}
-                    {esAdmin && (
+                    {puedeOperar && (
                       <MenuAcciones
                         acciones={[
                           {
@@ -1187,7 +1194,7 @@ export default function Tesoreria() {
         <div className="card">
           <div className="card-header-flex">
             <h2>Pagos recurrentes</h2>
-            {esAdmin && (
+            {puedeOperar && (
               <button
                 className="btn btn-primary btn-accion"
                 onClick={() => {
@@ -1240,7 +1247,7 @@ export default function Tesoreria() {
                       {vencido && c.is_active && (
                         <span className="badge badge-emitido">Por pagar</span>
                       )}
-                      {esAdmin && (
+                      {puedeOperar && (
                         <MenuAcciones
                           acciones={[
                             {

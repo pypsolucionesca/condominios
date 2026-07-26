@@ -22,6 +22,7 @@ export default function EstadoUnidad() {
   const [movimientos, setMovimientos] = useState([])
   const [avisos, setAvisos] = useState([])
   const [pagos, setPagos] = useState([])
+  const [saldo, setSaldo] = useState(0)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
@@ -50,17 +51,22 @@ export default function EstadoUnidad() {
         .eq('unit_id', id)
         .order('payment_date', { ascending: false })
         .limit(36),
+      // Saldo canónico desde unit_balance (no se deduce del arreglo de
+      // movimientos, que depende del orden de las filas).
+      supabase.rpc('unit_balance', { p_unit_id: id }),
     ])
-      .then(([rU, rMov, rAvi, rPag]) => {
+      .then(([rU, rMov, rAvi, rPag, rSaldo]) => {
         if (!activo) return
         if (rU.error) throw rU.error
         if (rMov.error) throw rMov.error
         if (rAvi.error) throw rAvi.error
         if (rPag.error) throw rPag.error
+        if (rSaldo.error) throw rSaldo.error
         setUnidad(rU.data)
         setMovimientos(rMov.data || [])
         setAvisos(rAvi.data || [])
         setPagos(rPag.data || [])
+        setSaldo(Number(rSaldo.data) || 0)
       })
       .catch((err) => activo && setError(mensajeError(err)))
       .finally(() => activo && setCargando(false))
@@ -69,11 +75,6 @@ export default function EstadoUnidad() {
       activo = false
     }
   }, [id])
-
-  // Saldo actual: último running_balance de los movimientos
-  const saldo = movimientos.length
-    ? Number(movimientos[movimientos.length - 1].running_balance)
-    : 0
 
   // Resumen de lo pendiente
   const avisosPendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))

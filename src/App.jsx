@@ -22,9 +22,9 @@ import './styles/app.css'
 
 /** Envía a cada rol a su pantalla inicial. */
 function Inicio() {
-  const { esAdmin, cargando } = useAuth()
+  const { puedeOperar, cargando } = useAuth()
   if (cargando) return <Cargando />
-  return <Navigate to={esAdmin ? '/panel' : '/mi-cuenta'} replace />
+  return <Navigate to={puedeOperar ? '/panel' : '/mi-cuenta'} replace />
 }
 
 export default function App() {
@@ -69,7 +69,7 @@ export default function App() {
             <Route
               path="/cobranza"
               element={
-                <RutaProtegida soloAdmin>
+                <RutaProtegida soloOperador>
                   <Cobranza />
                 </RutaProtegida>
               }
@@ -85,7 +85,7 @@ export default function App() {
             <Route
               path="/pagos"
               element={
-                <RutaProtegida soloAdmin>
+                <RutaProtegida soloOperador>
                   <Pagos />
                 </RutaProtegida>
               }

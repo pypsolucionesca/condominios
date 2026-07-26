@@ -5,26 +5,50 @@ import Campana from './Campana'
 import LimiteError from './LimiteError'
 
 export default function Layout() {
-  const { perfil, esAdmin, cerrarSesion, unidades, finanzasPublicas } = useAuth()
+  const { perfil, esAdmin, esSupervisor, puedeOperar, cerrarSesion, unidades, finanzasPublicas } =
+    useAuth()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const navigate = useNavigate()
 
-  const enlaces = esAdmin
-    ? [
-        { to: '/panel', icono: '📊', texto: 'Panel' },
-        { to: '/unidades', icono: '🏢', texto: 'Unidades' },
-        { to: '/cobranza', icono: '📄', texto: 'Cobranza' },
-        { to: '/pagos', icono: '💵', texto: 'Pagos' },
-        { to: '/tesoreria', icono: '🏦', texto: 'Tesorería' },
-        { to: '/exoneraciones', icono: '🤲', texto: 'Exoneraciones' },
-        { to: '/configuracion', icono: '⚙️', texto: 'Ajustes' },
-      ]
-    : [
-        { to: '/mi-cuenta', icono: '📄', texto: 'Mi cuenta' },
-        { to: '/reportar-pago', icono: '💵', texto: 'Reportar pago' },
-        { to: '/panel', icono: '📊', texto: 'Transparencia' },
-        { to: '/unidades', icono: '🏢', texto: 'Unidades' },
-      ]
+  // Navegación según lo que el rol puede hacer:
+  //  - Admin y supervisor OPERAN: ven panel, unidades, cobranza, pagos,
+  //    tesorería. Las opciones de GOBIERNO (exoneraciones, ajustes) quedan
+  //    solo para el admin.
+  //  - Residente ve su cuenta y transparencia.
+  let enlaces
+  if (puedeOperar) {
+    enlaces = [
+      { to: '/panel', icono: '📊', texto: 'Panel' },
+      { to: '/unidades', icono: '🏢', texto: 'Unidades' },
+      { to: '/cobranza', icono: '📄', texto: 'Cobranza' },
+      { to: '/pagos', icono: '💵', texto: 'Pagos' },
+      { to: '/tesoreria', icono: '🏦', texto: 'Tesorería' },
+    ]
+    // Gobierno: solo el administrador
+    if (esAdmin) {
+      enlaces.push({ to: '/exoneraciones', icono: '🤲', texto: 'Exoneraciones' })
+      enlaces.push({ to: '/configuracion', icono: '⚙️', texto: 'Ajustes' })
+    }
+  } else {
+    enlaces = [
+      { to: '/mi-cuenta', icono: '📄', texto: 'Mi cuenta' },
+      { to: '/reportar-pago', icono: '💵', texto: 'Reportar pago' },
+      { to: '/panel', icono: '📊', texto: 'Transparencia' },
+      { to: '/unidades', icono: '🏢', texto: 'Unidades' },
+    ]
+  }
+
+  // Texto de rol que se muestra bajo el nombre del usuario, para que
+  // siempre quede claro con qué rol está trabajando la persona.
+  const descripcionRol = esAdmin
+    ? 'Administrador'
+    : esSupervisor
+    ? 'Supervisor'
+    : unidades.length === 1
+    ? `Apto. ${unidades[0].code}`
+    : unidades.length > 1
+    ? `${unidades.length} apartamentos`
+    : 'Residente'
 
   const salir = async () => {
     await cerrarSesion()
@@ -74,11 +98,12 @@ export default function Layout() {
             <div style={{ minWidth: 0 }}>
             <strong>{perfil?.full_name}</strong>
             <small>
-              {esAdmin
-                ? 'Administrador'
-                : unidades.length === 1
-                ? `Apto. ${unidades[0].code}`
-                : `${unidades.length} apartamentos`}
+              {(esAdmin || esSupervisor) && (
+                <span className={`chip ${esAdmin ? 'chip-admin' : 'chip-supervisor'}`}>
+                  {descripcionRol}
+                </span>
+              )}
+              {!esAdmin && !esSupervisor && descripcionRol}
             </small>
             </div>
           </NavLink>
@@ -117,11 +142,12 @@ export default function Layout() {
               <div className="menu-usuario">
                 <strong>{perfil?.full_name}</strong>
                 <small>
-                  {esAdmin
-                    ? 'Administrador'
-                    : unidades.length === 1
-                    ? `Apto. ${unidades[0].code}`
-                    : 'Residente'}
+                  {(esAdmin || esSupervisor) && (
+                    <span className={`chip ${esAdmin ? 'chip-admin' : 'chip-supervisor'}`}>
+                      {descripcionRol}
+                    </span>
+                  )}
+                  {!esAdmin && !esSupervisor && descripcionRol}
                 </small>
               </div>
 

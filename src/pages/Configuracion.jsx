@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtNumero, fmtFecha, fmtHoraLocal, hoy } from '../lib/formato'
 import { Aviso, Cargador } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
+import GestionUsuarios from '../components/GestionUsuarios'
 
 const ORIGEN = {
   'dolarapi-oficial': 'BCV automático',
@@ -463,6 +464,8 @@ export default function Configuracion() {
           {guardando ? 'Guardando…' : 'Guardar configuración'}
         </button>
       </form>
+
+      <GestionUsuarios />
     </>
   )
 }

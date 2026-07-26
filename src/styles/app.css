@@ -1058,6 +1058,11 @@ textarea.form-control { resize: vertical; font-family: inherit; }
 .usuario-avatar {
   width: 34px; height: 34px; border-radius: 50%;
   object-fit: cover; flex-shrink: 0;
+  /* Nitidez en pantallas de alta densidad y borde sutil para definir el
+     contorno del avatar sobre el fondo oscuro del sidebar. */
+  image-rendering: auto;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
 }
 .usuario-avatar-vacio {
   width: 34px; height: 34px; border-radius: 50%;
@@ -1818,6 +1823,35 @@ html, body, #root {
   color: rgba(255, 255, 255, 0.65);
   -webkit-text-fill-color: rgba(255, 255, 255, 0.65);
 }
+
+/* Los chips de rol (Administrador / Supervisor) van sobre el sidebar
+   oscuro y el menú móvil. El tema oscuro forzaba su texto a blanco, lo
+   que los dejaba invisibles (texto claro sobre fondo claro). Aquí se
+   restauran sus colores propios y se anula la opacidad heredada. */
+.usuario-info small .chip,
+.menu-usuario small .chip {
+  opacity: 1;
+}
+.usuario-info small .chip-admin,
+.menu-usuario small .chip-admin {
+  color: #92400e;
+  -webkit-text-fill-color: #92400e;
+}
+.usuario-info small .chip-supervisor,
+.menu-usuario small .chip-supervisor {
+  color: #1e40af;
+  -webkit-text-fill-color: #1e40af;
+}
+.usuario-info small .chip-residente,
+.menu-usuario small .chip-residente {
+  color: #3730a3;
+  -webkit-text-fill-color: #3730a3;
+}
+.usuario-info small .chip-restringido,
+.menu-usuario small .chip-restringido {
+  color: #6b21a8;
+  -webkit-text-fill-color: #6b21a8;
+}
 .header-movil { color: #ffffff; }
 .hamburguesa {
   color: #ffffff;
@@ -2036,3 +2070,45 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .resumen-cuadro strong { font-size: 1.35rem; }
 .texto-warning { color: var(--warning); }
+
+/* Nota bajo el saldo a favor (transparencia con el residente) */
+.saldo-nota {
+  display: block; margin-top: 6px;
+  font-size: 0.8rem; opacity: 0.85;
+}
+
+/* Chips de rol en gestión de usuarios */
+.chip-admin       { background: #fef3c7; color: #92400e; }
+.chip-supervisor  { background: #dbeafe; color: #1e40af; }
+.chip-residente   { background: #e0e7ff; color: #3730a3; }
+.chip-restringido { background: #f3e8ff; color: #6b21a8; }
+
+/* Correo del usuario en la lista de gestión de usuarios y roles */
+.usuario-correo {
+  display: block;
+  margin-top: 2px;
+  color: var(--texto-tenue, #64748b);
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+/* Pantalla de auditoría: detalle expandible de cada registro */
+.auditoria-flecha {
+  color: var(--texto-tenue, #94a3b8);
+  font-size: 0.7rem;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+.auditoria-detalle {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--fondo-suave, #f8fafc);
+  border: 1px solid var(--borde, #e2e8f0);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 260px;
+}

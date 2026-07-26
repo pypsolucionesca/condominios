@@ -17,6 +17,7 @@ export default function MiCuenta() {
   const [movimientos, setMovimientos] = useState([])
   const [avisos, setAvisos] = useState([])
   const [pagos, setPagos] = useState([])
+  const [saldo, setSaldo] = useState(0)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
@@ -48,15 +49,22 @@ export default function MiCuenta() {
         .eq('unit_id', unidadSel)
         .order('payment_date', { ascending: false })
         .limit(24),
+      // Saldo canónico: unit_balance es la única fuente de verdad del
+      // saldo (suma débitos menos créditos del ledger). NO se deduce de la
+      // posición de un movimiento en el arreglo, que depende del orden con
+      // que la consulta devuelva las filas.
+      supabase.rpc('unit_balance', { p_unit_id: unidadSel }),
     ])
-      .then(([rMov, rAvi, rPag]) => {
+      .then(([rMov, rAvi, rPag, rSaldo]) => {
         if (!activo) return
         if (rMov.error) throw rMov.error
         if (rAvi.error) throw rAvi.error
         if (rPag.error) throw rPag.error
+        if (rSaldo.error) throw rSaldo.error
         setMovimientos(rMov.data || [])
         setAvisos(rAvi.data || [])
         setPagos(rPag.data || [])
+        setSaldo(Number(rSaldo.data) || 0)
       })
       .catch((err) => activo && setError(mensajeError(err)))
       .finally(() => activo && setCargando(false))
@@ -67,10 +75,6 @@ export default function MiCuenta() {
   }, [unidadSel])
 
   const unidad = unidades.find((u) => u.id === unidadSel)
-
-  const saldo = movimientos.length
-    ? Number(movimientos[movimientos.length - 1].running_balance)
-    : 0
 
   const descargarEstado = async () => {
     try {
@@ -132,6 +136,11 @@ export default function MiCuenta() {
             {saldo === 0 ? 'Solvente' : fmtUSD(Math.abs(saldo))}
           </strong>
           <span className="saldo-unidad">Apartamento {unidad?.code}</span>
+          {saldo < 0 && (
+            <span className="saldo-nota">
+              Este monto se aplicará automáticamente a su próximo recibo.
+            </span>
+          )}
         </div>
       </div>
 

@@ -280,6 +280,29 @@ export default function Unidades() {
     })
   }
 
+  // Vincula el PROPIO perfil del usuario a la unidad como propietario.
+  // No cambia el rol: un admin o supervisor sigue siéndolo, pero además
+  // queda asociado a su unidad, con lo que verá su "Mi cuenta".
+  const vincularme = async (unidad) => {
+    setError(null)
+    try {
+      const { error: err } = await supabase.from('unit_members').insert([
+        {
+          unit_id: unidad.id,
+          user_id: perfil.id,
+          relation: 'propietario',
+          is_primary: false,
+        },
+      ])
+      if (err) throw err
+      setAviso(`Se vinculó su usuario a ${unidad.code}. Ya puede ver "Mi cuenta".`)
+      setDetalleUnidad(null)
+      cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    }
+  }
+
   const eliminar = async (u) => {
     setError(null)
     try {
@@ -846,6 +869,18 @@ export default function Unidades() {
                 >
                   Editar unidad
                 </button>
+                {/* Vincularme: solo si mi propio perfil NO es ya responsable
+                    de esta unidad. Permite al admin/supervisor asociarse a su
+                    apartamento y ver "Mi cuenta" sin cambiar de rol. */}
+                {!detalleUnidad.gente.some((m) => m.profiles?.id === perfil?.id) && (
+                  <button
+                    type="button"
+                    className="btn btn-secundario"
+                    onClick={() => vincularme(detalleUnidad.unidad)}
+                  >
+                    Vincularme a esta unidad
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-primary"

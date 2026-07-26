@@ -25,6 +25,7 @@ export default function ReportarPago() {
   const [archivo, setArchivo] = useState(null)
   const [vistaPrevia, setVistaPrevia] = useState(null)
   const [tasa, setTasa] = useState(null)
+  const [tasaSinDato, setTasaSinDato] = useState(false)
   const [saldo, setSaldo] = useState(null)
   const [recientes, setRecientes] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -38,23 +39,60 @@ export default function ReportarPago() {
     }
   }, [unidades, form.unit_id])
 
+  // La tasa se trae SEGÚN LA FECHA del pago, no la de hoy. Así un pago
+  // con fecha pasada se calcula con la tasa vigente de ese día. La función
+  // rate_for_date devuelve la tasa más reciente anterior o igual a la
+  // fecha (cubre fines de semana y feriados). Si no hay ninguna tasa
+  // para esa fecha, se marca tasaSinDato: el residente reporta igual y
+  // el administrador resuelve la tasa al verificar.
   useEffect(() => {
+    if (!form.payment_date) {
+      setCargando(false)
+      return
+    }
+    let activo = true
+    setCargando(true)
+
     supabase
-      .from('exchange_rates')
-      .select('rate_date, rate_bcv')
-      .order('rate_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setTasa(data))
-      .finally(() => setCargando(false))
-  }, [])
+      .rpc('rate_for_date', { p_date: form.payment_date })
+      .then(({ data, error }) => {
+        if (!activo) return
+        // Si la consulta de tasa falla, NO se bloquea el formulario: se
+        // trata como "sin tasa" y el residente reporta igual; la
+        // administración fija la tasa correcta al verificar el pago.
+        if (error || data == null) {
+          setTasa(null)
+          setTasaSinDato(true)
+        } else {
+          setTasa({ rate_date: form.payment_date, rate_bcv: Number(data) })
+          setTasaSinDato(false)
+        }
+      })
+      .catch(() => {
+        if (!activo) return
+        setTasa(null)
+        setTasaSinDato(true)
+      })
+      .finally(() => activo && setCargando(false))
+
+    return () => {
+      activo = false
+    }
+  }, [form.payment_date])
 
   useEffect(() => {
     if (!form.unit_id) return
 
-    supabase
-      .rpc('unit_balance', { p_unit_id: form.unit_id })
-      .then(({ data }) => setSaldo(Number(data) || 0))
+    supabase.rpc('unit_balance', { p_unit_id: form.unit_id }).then(({ data }) => {
+      const s = Number(data) || 0
+      setSaldo(s)
+      // Sugerir como monto lo que debe (si debe). Editable: el residente
+      // puede pagar de más o de menos. Solo se pre-rellena si el campo
+      // está vacío, para no pisar lo que el usuario ya escribió.
+      if (s > 0) {
+        setForm((f) => (f.amount ? f : { ...f, amount: s.toFixed(2), currency: 'USD' }))
+      }
+    })
 
     supabase
       .from('payments')
@@ -94,9 +132,9 @@ export default function ReportarPago() {
     const monto = Number(form.amount)
     if (!monto || monto <= 0) return setError('Indique el monto pagado.')
 
-    if (form.currency === 'VES' && !tasa) {
-      return setError('No hay tasa de cambio registrada. Reporte el pago en dólares o avise a la administración.')
-    }
+    // Si paga en bolívares y no hay tasa para esa fecha, NO se bloquea:
+    // se reporta igual y el administrador fija la tasa al verificar.
+    // (Antes se bloqueaba; tu decisión fue que el usuario no se trabe.)
 
     // La transferencia y el pago móvil tienen número de operación: es
     // obligatorio para poder verificar el pago. El efectivo no lo tiene.
@@ -178,6 +216,17 @@ export default function ReportarPago() {
     form.currency === 'VES' && tasa && form.amount
       ? Number(form.amount) / Number(tasa.rate_bcv)
       : null
+
+  // Monto del pago expresado en USD, para comparar con la deuda.
+  const montoPagoUSD =
+    form.currency === 'USD'
+      ? Number(form.amount) || 0
+      : equivalente || 0
+
+  // Diferencia respecto al saldo pendiente: positiva = paga de más,
+  // negativa = paga de menos. Solo tiene sentido si hay saldo y monto.
+  const diferencia =
+    saldo !== null && montoPagoUSD > 0 ? montoPagoUSD - saldo : null
 
   return (
     <>
@@ -299,9 +348,31 @@ export default function ReportarPago() {
 
           {equivalente !== null && (
             <Aviso tipo="aviso">
-              Equivale a {fmtUSD(equivalente)} con la tasa de Bs.{' '}
-              {fmtNumero(tasa.rate_bcv)} del {fmtFecha(tasa.rate_date)}. La administración aplicará
-              la tasa vigente en la fecha del pago.
+              Equivale a {fmtUSD(equivalente)} según la tasa de Bs.{' '}
+              {fmtNumero(tasa.rate_bcv)} vigente el {fmtFecha(form.payment_date)}.
+            </Aviso>
+          )}
+
+          {form.currency === 'VES' && tasaSinDato && form.amount && (
+            <Aviso tipo="aviso">
+              No hay tasa registrada para la fecha del pago. Puede reportarlo igual:
+              la administración fijará la tasa correcta al verificarlo.
+            </Aviso>
+          )}
+
+          {diferencia !== null && Math.abs(diferencia) >= 0.01 && (
+            <Aviso tipo={diferencia > 0 ? 'exito' : 'aviso'}>
+              {diferencia > 0 ? (
+                <>
+                  Está pagando <strong>{fmtUSD(diferencia)}</strong> más de lo que debe.
+                  El excedente quedará a su favor para el próximo recibo.
+                </>
+              ) : (
+                <>
+                  Está pagando <strong>{fmtUSD(Math.abs(diferencia))}</strong> menos que su
+                  saldo. Quedará ese monto pendiente por pagar.
+                </>
+              )}
             </Aviso>
           )}
 

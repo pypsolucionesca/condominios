@@ -7,7 +7,7 @@ import { Indicador, Aviso, Vacio, Cargador } from '../components/UI'
 import GastosPorCategoria from '../components/GastosPorCategoria'
 
 export default function PanelControl() {
-  const { perfil, esAdmin, condominio } = useAuth()
+  const { perfil, puedeOperar, condominio } = useAuth()
   const navigate = useNavigate()
 
   const [datos, setDatos] = useState(null)
@@ -138,14 +138,14 @@ export default function PanelControl() {
         </Aviso>
       )}
 
-      {esAdmin && Number(datos.pagos_por_confirmar) > 0 && (
+      {puedeOperar && Number(datos.pagos_por_confirmar) > 0 && (
         <Aviso tipo="aviso">
           Hay {datos.pagos_por_confirmar} pago(s) reportado(s) esperando confirmación.{' '}
           <Link to="/pagos">Revisar ahora</Link>
         </Aviso>
       )}
 
-      {esAdmin && Number(datos.compromisos_pendientes) > 0 && (
+      {puedeOperar && Number(datos.compromisos_pendientes) > 0 && (
         <Aviso tipo="aviso">
           Hay {datos.compromisos_pendientes} compromiso(s) por pagar esta semana.{' '}
           <Link to="/tesoreria">Ver tesorería</Link>

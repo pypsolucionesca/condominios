@@ -217,6 +217,12 @@ export function AuthProvider({ children }) {
     return { ok: true }
   }
 
+  const rol = perfil?.role
+  const esAdmin = rol === 'admin'
+  const esSupervisor = rol === 'supervisor'
+  const esResidente = rol === 'resident' || rol === 'residente_restringido'
+  const esRestringido = rol === 'residente_restringido'
+
   const valor = {
     session,
     usuario: session?.user ?? null,
@@ -227,8 +233,22 @@ export function AuthProvider({ children }) {
     visibilidadMorosidad: condominio?.delinquency_visibility || 'oculto',
     cargando,
     errorPerfil,
-    esAdmin: perfil?.role === 'admin',
-    esResidente: perfil?.role === 'resident',
+
+    // Roles
+    esAdmin,               // gobierna: usuarios, exoneraciones, borrados, config
+    esSupervisor,          // opera: pagos, gastos, avisos, cobranza
+    esResidente,           // residente (normal o restringido)
+    esRestringido,         // residente restringido (sin tesorería)
+
+    // Permiso de operación: admin O supervisor. Úsese para mostrar las
+    // herramientas de gestión operativa (confirmar pagos, emitir, gastos).
+    puedeOperar: esAdmin || esSupervisor,
+
+    // Un admin (o supervisor) puede además estar ligado a una unidad y ser
+    // residente. Esto permite ofrecerle su vista personal ("Mi cuenta").
+    tieneUnidad: unidades.length > 0,
+    esAdminConUnidad: (esAdmin || esSupervisor) && unidades.length > 0,
+
     autenticado: Boolean(session && perfil),
     iniciarSesion,
     cerrarSesion,

@@ -18,8 +18,8 @@ export function Cargando({ mensaje = 'Cargando…' }) {
  * políticas RLS de Postgres, que se aplican aunque alguien manipule el
  * JavaScript del navegador.
  */
-export function RutaProtegida({ children, soloAdmin = false }) {
-  const { autenticado, cargando, esAdmin, errorPerfil, cerrarSesion } = useAuth()
+export function RutaProtegida({ children, soloAdmin = false, soloOperador = false }) {
+  const { autenticado, cargando, esAdmin, puedeOperar, errorPerfil, cerrarSesion } = useAuth()
   const location = useLocation()
 
   if (cargando) return <Cargando mensaje="Verificando sesión…" />
@@ -41,8 +41,18 @@ export function RutaProtegida({ children, soloAdmin = false }) {
     return <Navigate to="/login" state={{ desde: location.pathname }} replace />
   }
 
+  // Destino de rebote según lo que la persona sí puede ver: quien opera
+  // (admin o supervisor) va al panel; el residente, a su cuenta.
+  const destinoPorDefecto = puedeOperar ? '/panel' : '/mi-cuenta'
+
+  // Gobierno: exclusivo del administrador (exoneraciones, ajustes, usuarios).
   if (soloAdmin && !esAdmin) {
-    return <Navigate to="/mi-cuenta" replace />
+    return <Navigate to={destinoPorDefecto} replace />
+  }
+
+  // Operación: administrador o supervisor (cobranza, pagos, tesorería).
+  if (soloOperador && !puedeOperar) {
+    return <Navigate to={destinoPorDefecto} replace />
   }
 
   return children
@@ -52,10 +62,10 @@ export function RutaProtegida({ children, soloAdmin = false }) {
  * Impide ver el login a quien ya tiene sesión iniciada.
  */
 export function RutaPublica({ children }) {
-  const { autenticado, cargando, esAdmin } = useAuth()
+  const { autenticado, cargando, puedeOperar } = useAuth()
 
   if (cargando) return <Cargando />
-  if (autenticado) return <Navigate to={esAdmin ? '/panel' : '/mi-cuenta'} replace />
+  if (autenticado) return <Navigate to={puedeOperar ? '/panel' : '/mi-cuenta'} replace />
 
   return children
 }

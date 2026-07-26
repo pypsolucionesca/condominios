@@ -117,6 +117,40 @@ async function fuenteSecundaria(): Promise<Tasas | null> {
   }
 }
 
+/**
+ * Notifica a los administradores que la tasa del día no se pudo obtener.
+ * Se llama solo cuando el último intento del día falla, o en el
+ * recordatorio del mediodía si sigue sin tasa. Usa la RPC notify_admins
+ * a través de un insert directo en notifications por cada admin activo.
+ */
+async function notificarAdminSinTasa(admin: any, fecha: string, esRecordatorio: boolean) {
+  try {
+    const { data: condos } = await admin.from('condominiums').select('id')
+    if (!condos?.length) return
+
+    const titulo = esRecordatorio
+      ? 'La tasa sigue sin actualizarse'
+      : 'La tasa del día no se pudo actualizar'
+    const cuerpo = esRecordatorio
+      ? `Al mediodía aún no hay tasa del BCV para hoy (${fecha}). Cárguela manualmente en Ajustes para que los residentes puedan pagar en bolívares.`
+      : `Los intentos automáticos de obtener la tasa del BCV fallaron hoy (${fecha}). Revise el sistema y, si hace falta, cargue la tasa manualmente en Ajustes.`
+
+    for (const c of condos) {
+      // notify_admins inserta una notificación para cada admin del condominio
+      await admin.rpc('notify_admins', {
+        p_condominium_id: c.id,
+        p_kind: 'general',
+        p_title: titulo,
+        p_body: cuerpo,
+        p_link: '/configuracion',
+        p_payload: { motivo: 'tasa_no_actualizada', fecha },
+      })
+    }
+  } catch (err) {
+    console.error('No se pudo notificar a los admins:', (err as Error).message)
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
@@ -131,6 +165,46 @@ Deno.serve(async (req) => {
     const admin = createClient(url, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
+
+    const hoy = new Date().toISOString().split('T')[0]
+
+    // Parámetros opcionales del cron: qué intento es y si es el último
+    // del día. Permite reintentos escalonados (4, 5, 6 AM) que solo
+    // actúan si aún falta la tasa, y notificar al admin si el final falla.
+    let intento = 1
+    let esFinal = false
+    let esRecordatorio = false
+    try {
+      const body = await req.json()
+      intento = Number(body?.intento) || 1
+      esFinal = Boolean(body?.es_final)
+      esRecordatorio = Boolean(body?.recordatorio)
+    } catch {
+      /* sin body: ejecución normal */
+    }
+
+    // Si ya existe la tasa de hoy con estado válido, no se reintenta:
+    // el intento anterior tuvo éxito. (No aplica al recordatorio, que
+    // solo verifica y notifica.)
+    const { data: yaHoy } = await admin
+      .from('exchange_rates')
+      .select('rate_date, status')
+      .eq('rate_date', hoy)
+      .in('status', ['active', 'fallback'])
+      .maybeSingle()
+
+    if (yaHoy && !esRecordatorio) {
+      return json({ ok: true, ya_existia: true, fecha: hoy, mensaje: 'La tasa de hoy ya estaba registrada.' })
+    }
+
+    // El recordatorio del mediodía solo verifica y avisa; no consulta la API.
+    if (esRecordatorio) {
+      if (!yaHoy) {
+        await notificarAdminSinTasa(admin, hoy, true)
+        return json({ ok: false, sin_tasa: true, recordatorio: true, mensaje: 'Recordatorio enviado: aún sin tasa.' })
+      }
+      return json({ ok: true, ya_existia: true, mensaje: 'Al mediodía ya había tasa.' })
+    }
 
     console.log('Consultando fuente principal…')
     let tasas = await fuentePrincipal()
@@ -164,9 +238,17 @@ Deno.serve(async (req) => {
         await admin.from('exchange_rates').update({ status: 'stale' }).eq('id', ultima.id)
       }
 
+      // Si este era el último intento del día y seguimos sin tasa de hoy,
+      // se avisa al administrador para que la cargue manualmente.
+      if (esFinal) {
+        await notificarAdminSinTasa(admin, hoy, false)
+      }
+
       return json(
         {
           error: 'Las fuentes de tasa no respondieron',
+          intento,
+          es_final: esFinal,
           tasa_vigente: ultima?.rate_bcv ?? null,
           fecha_vigente: ultima?.rate_date ?? null,
         },
@@ -204,8 +286,6 @@ Deno.serve(async (req) => {
         )
       }
     }
-
-    const hoy = new Date().toISOString().split('T')[0]
 
     const { data, error } = await admin
       .from('exchange_rates')
