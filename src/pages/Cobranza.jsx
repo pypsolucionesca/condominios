@@ -38,6 +38,7 @@ export default function Cobranza() {
 
   const [avisos, setAvisos] = useState([])
   const [unidades, setUnidades] = useState([])
+  const [miembros, setMiembros] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
@@ -71,27 +72,33 @@ export default function Cobranza() {
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const [rA, rU] = await Promise.all([
+      const [rA, rU, rM] = await Promise.all([
         supabase
           .from('invoices')
           .select(
-            'id, invoice_number, issue_date, due_date, subtotal, previous_balance, total, notes, status, unit_id, period_id, units:unit_id (code, unit_type), billing_periods:period_id (period)'
+            'id, invoice_number, issue_date, due_date, subtotal, previous_balance, total, notes, status, unit_id, period_id, units:unit_id (code, unit_type, business_name), billing_periods:period_id (period)'
           )
           .order('issue_date', { ascending: false })
           .order('invoice_number', { ascending: false })
           .limit(300),
         supabase
           .from('units')
-          .select('id, code, unit_type, fixed_fee, is_active')
+          .select('id, code, unit_type, business_name, fixed_fee, is_active')
           .eq('is_active', true)
           .order('code'),
+        // Responsables de cada unidad, para mostrar y buscar por propietario.
+        supabase
+          .from('unit_members')
+          .select('unit_id, profiles:user_id (full_name)'),
       ])
 
       if (rA.error) throw rA.error
       if (rU.error) throw rU.error
+      if (rM.error) throw rM.error
 
       setAvisos(rA.data || [])
       setUnidades(rU.data || [])
+      setMiembros(rM.data || [])
       setError(null)
     } catch (err) {
       setError(mensajeError(err))
@@ -110,16 +117,30 @@ export default function Cobranza() {
     }
   }, [condominio?.default_billing_mode])
 
+  // Responsables por unidad (para mostrar y buscar por propietario).
+  const responsablesPorUnidad = useMemo(() => {
+    const mapa = {}
+    for (const m of miembros) {
+      if (!m.profiles?.full_name) continue
+      ;(mapa[m.unit_id] = mapa[m.unit_id] || []).push(m.profiles.full_name)
+    }
+    return mapa
+  }, [miembros])
+
   const visibles = useMemo(() => {
     const q = normalizar(busqueda)
     return avisos.filter((a) => {
       if (filtroEstado && a.status !== filtroEstado) return false
       if (!q) return true
+      const responsables = (responsablesPorUnidad[a.unit_id] || []).join(' ')
       return (
-        normalizar(a.units?.code).includes(q) || String(a.invoice_number).includes(q)
+        normalizar(a.units?.code).includes(q) ||
+        normalizar(a.units?.business_name).includes(q) ||
+        normalizar(responsables).includes(q) ||
+        String(a.invoice_number).includes(q)
       )
     })
-  }, [avisos, filtroEstado, busqueda])
+  }, [avisos, filtroEstado, busqueda, responsablesPorUnidad])
 
   const pendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))
   // Se suman los subtotales (el cargo propio de cada aviso), no el campo
@@ -328,7 +349,7 @@ export default function Cobranza() {
       <div className="barra-filtros">
         <input
           className="form-control"
-          placeholder="Buscar por unidad o número de aviso…"
+          placeholder="Buscar por unidad, empresa, propietario o número de aviso…"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
@@ -396,7 +417,21 @@ export default function Cobranza() {
                       <td>
                         <strong>{a.invoice_number}</strong>
                       </td>
-                      <td>{a.units?.code || '—'}</td>
+                      <td>
+                        <strong>
+                          {a.units?.unit_type === 'local_comercial' && a.units?.business_name
+                            ? a.units.business_name
+                            : a.units?.code || '—'}
+                        </strong>
+                        {a.units?.unit_type === 'local_comercial' && a.units?.business_name && (
+                          <small className="bloque">{a.units.code}</small>
+                        )}
+                        {(responsablesPorUnidad[a.unit_id] || []).length > 0 && (
+                          <small className="bloque" style={{ color: 'var(--text-muted)' }}>
+                            {responsablesPorUnidad[a.unit_id].join(', ')}
+                          </small>
+                        )}
+                      </td>
                       <td>
                         {a.billing_periods?.period
                           ? fmtMesAno(a.billing_periods.period)
