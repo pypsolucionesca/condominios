@@ -86,7 +86,6 @@ export default function Cobranza() {
           .select('id, code, unit_type, business_name, fixed_fee, is_active')
           .eq('is_active', true)
           .order('code'),
-        // Responsables de cada unidad, para mostrar y buscar por propietario.
         supabase
           .from('unit_members')
           .select('unit_id, profiles:user_id (full_name)'),
@@ -117,7 +116,6 @@ export default function Cobranza() {
     }
   }, [condominio?.default_billing_mode])
 
-  // Responsables por unidad (para mostrar y buscar por propietario).
   const responsablesPorUnidad = useMemo(() => {
     const mapa = {}
     for (const m of miembros) {
@@ -143,12 +141,7 @@ export default function Cobranza() {
   }, [avisos, filtroEstado, busqueda, responsablesPorUnidad])
 
   const pendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))
-  // Se suman los subtotales (el cargo propio de cada aviso), no el campo
-  // total, porque este último ya incluye el saldo anterior y sumarlo entre
-  // varios avisos de la misma unidad duplicaría la deuda.
   const totalPendiente = pendientes.reduce((s, a) => s + Number(a.subtotal || 0), 0)
-
-  // ------------------------------------------------------------- acciones
 
   const calcularPrevia = useCallback(async () => {
     if (!perfil?.condominium_id) return
@@ -291,7 +284,6 @@ export default function Cobranza() {
 
       if (rItems.error) throw rItems.error
 
-      // jsPDF pesa ~400 KB: se carga solo cuando se genera un PDF
       const { pdfAviso, logoParaPdf, descargarPdf } = await import('../lib/pdf')
       const logo = await logoParaPdf(condominio?.logo_url)
 
@@ -310,8 +302,6 @@ export default function Cobranza() {
     }
   }
 
-  // ------------------------------------------------------------------ vista
-
   if (cargando) return <Cargador texto="Cargando avisos…" />
 
   const modoActual = MODOS.find((m) => m.valor === formEmision.modo)
@@ -320,6 +310,19 @@ export default function Cobranza() {
 
   return (
     <>
+      <style>{`
+        .tabla-cobranza .col-comercio { display: table-cell; }
+        .tabla-cobranza .info-movil { display: none; }
+        @media (max-width: 768px) {
+          .tabla-cobranza .col-comercio { display: none !important; }
+          .tabla-cobranza .info-movil { 
+            display: block; 
+            margin-top: 2px; 
+            line-height: 1.15; 
+          }
+        }
+      `}</style>
+
       <div className="pagina-cabecera">
         <div>
           <h1>Cobranza</h1>
@@ -361,7 +364,7 @@ export default function Cobranza() {
         >
           <option value="">Todos los estados</option>
           <option value="emitido">Pendientes</option>
-          <option value="parcial">Abonados</option>
+          <option value="parcial">Pagados</option>
           <option value="pagado">Pagados</option>
           <option value="anulado">Anulados</option>
         </select>
@@ -389,11 +392,12 @@ export default function Cobranza() {
       ) : (
         <div className="card">
           <div className="tabla-scroll">
-            <table className="tabla">
+            <table className="tabla tabla-cobranza">
               <thead>
                 <tr>
                   <th>N°</th>
                   <th>Unidad</th>
+                  <th className="col-comercio">Comercio</th>
                   <th>Concepto</th>
                   <th>Emitido</th>
                   <th>Vence</th>
@@ -408,6 +412,13 @@ export default function Cobranza() {
                     ['emitido', 'parcial'].includes(a.status) &&
                     new Date(a.due_date) < new Date(hoy())
 
+                  // Forzamos visualmente que 'parcial' se vea como 'pagado'
+                  const estadoVisual = a.status === 'parcial' ? 'pagado' : a.status
+                  const etiquetaVisual = a.status === 'parcial' ? 'Pagado' : etiqueta(a.status)
+
+                  const esComercial = a.units?.unit_type === 'local_comercial' && a.units?.business_name
+                  const responsablesList = responsablesPorUnidad[a.unit_id] || []
+
                   return (
                     <tr
                       key={a.id}
@@ -419,19 +430,27 @@ export default function Cobranza() {
                       </td>
                       <td>
                         <strong>
-                          {a.units?.unit_type === 'local_comercial' && a.units?.business_name
-                            ? a.units.business_name
-                            : a.units?.code || '—'}
+                          {esComercial ? a.units.business_name : (a.units?.code || '—')}
                         </strong>
-                        {a.units?.unit_type === 'local_comercial' && a.units?.business_name && (
-                          <small className="bloque">{a.units.code}</small>
-                        )}
-                        {(responsablesPorUnidad[a.unit_id] || []).length > 0 && (
+                        <div className="info-movil">
+                          {esComercial && (
+                            <small style={{ display: 'block', color: 'var(--text-main)', fontWeight: 500, marginBottom: '1px' }}>
+                              {a.units.code}
+                            </small>
+                          )}
+                          {responsablesList.length > 0 && (
+                            <small style={{ display: 'block', color: '#6b7280' }}>
+                              {responsablesList.join(', ')}
+                            </small>
+                          )}
+                        </div>
+                        {!esComercial && responsablesList.length > 0 && (
                           <small className="bloque" style={{ color: 'var(--text-muted)' }}>
-                            {responsablesPorUnidad[a.unit_id].join(', ')}
+                            {responsablesList.join(', ')}
                           </small>
                         )}
                       </td>
+                      <td className="col-comercio">{a.units?.business_name || '—'}</td>
                       <td>
                         {a.billing_periods?.period
                           ? fmtMesAno(a.billing_periods.period)
@@ -445,7 +464,7 @@ export default function Cobranza() {
                         {vencido && <small className="bloque">Vencido</small>}
                       </td>
                       <td>
-                        <span className={`badge badge-${a.status}`}>{etiqueta(a.status)}</span>
+                        <span className={`badge badge-${estadoVisual}`}>{etiquetaVisual}</span>
                       </td>
                       <td className="der">
                         <strong>{fmtUSD(a.subtotal)}</strong>
