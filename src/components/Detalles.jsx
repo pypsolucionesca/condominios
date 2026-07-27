@@ -127,6 +127,13 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
     })
   }
 
+  // Calculamos el estado real ignorando el acumulado viejo
+  const estadoReal = datos?.estado === 'anulado' 
+    ? 'anulado' 
+    : (Number(datos?.pagado) >= Number(datos?.subtotal) 
+        ? 'pagado' 
+        : (Number(datos?.pagado) > 0 ? 'parcial' : 'emitido'))
+
   return (
     <Panel
       abierto={abierto}
@@ -144,17 +151,17 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
 
           <div className="detalle-cabecera">
             <div>
-              <span className={`badge badge-${datos.estado}`}>{etiqueta(datos.estado)}</span>
+              <span className={`badge badge-${estadoReal}`}>{etiqueta(estadoReal)}</span>
               <h3>{datos.unidad?.codigo}</h3>
               <small>
                 {datos.residentes?.[0]?.nombre || 'Sin residente vinculado'}
               </small>
             </div>
             <div className="detalle-monto">
-              <small>Total</small>
-              <strong>{fmtUSD(datos.total)}</strong>
+              <small>Total del mes</small>
+              <strong>{fmtUSD(datos.subtotal)}</strong>
               {Number(datos.pagado) > 0 && (
-                <em>Abonado {fmtUSD(datos.pagado)}</em>
+                <em>Abonado a este mes {fmtUSD(datos.pagado)}</em>
               )}
             </div>
           </div>
@@ -171,14 +178,8 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
                 {datos.dias_mora > 0 && ` · ${datos.dias_mora} días`}
               </strong>
             </div>
-            <div>
-              <small>Tasa aplicada</small>
-              <strong>Bs. {fmtNumero(datos.tasa)}</strong>
-            </div>
-            <div>
-              <small>Equivalente</small>
-              <strong>{fmtMoneda(datos.total * datos.tasa, 'VES')}</strong>
-            </div>
+            {/* Ocultamos intencionalmente la Tasa de Emisión y el Equivalente 
+                para evitar cruces y confusiones con las tasas de los pagos */}
           </div>
 
           {!editando ? (
@@ -197,12 +198,8 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
                       </td>
                     </tr>
                   ))}
-                  {Number(datos.saldo_anterior) > 0 && (
-                    <tr>
-                      <td>Saldo anterior</td>
-                      <td className="der">{fmtUSD(datos.saldo_anterior)}</td>
-                    </tr>
-                  )}
+                  {/* Se oculta la línea de "Saldo anterior" para mantener el recibo 
+                      enfocado estrictamente en la cuota pura del mes */}
                   {Number(datos.credito_aplicado) > 0 && (
                     <tr>
                       <td>Saldo a favor aplicado</td>
@@ -224,7 +221,7 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
                           <strong>{fmtFecha(p.fecha)}</strong>
                           <small>
                             {p.referencia ? `Ref. ${p.referencia}` : 'Sin referencia'}
-                            {p.moneda === 'VES' && ` · ${fmtMoneda(p.monto, 'VES')}`}
+                            {p.moneda === 'VES' && Number(p.monto_usd) > 0 && ` · ${fmtMoneda(p.monto, 'VES')} (Tasa: Bs. ${fmtNumero(Number(p.monto) / Number(p.monto_usd))})`}
                           </small>
                         </div>
                         <strong>{fmtUSD(p.monto_usd)}</strong>

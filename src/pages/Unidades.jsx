@@ -450,34 +450,37 @@ export default function Unidades() {
       <div className="barra-filtros">
         <input
           className="form-control"
+          style={{ flex: '1 1 100%' }}
           placeholder="Buscar por código, empresa, ubicación o residente…"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
-        <select
-          className="form-control"
-          style={{ maxWidth: 200 }}
-          value={filtroTipo}
-          onChange={(e) => setFiltroTipo(e.target.value)}
-        >
-          <option value="">Todos los tipos</option>
-          {TIPOS_UNIDAD.map((t) => (
-            <option key={t.valor} value={t.valor}>
-              {t.etiqueta}
-            </option>
-          ))}
-        </select>
-        <select
-          className="form-control"
-          style={{ maxWidth: 200 }}
-          value={filtroEstado}
-          onChange={(e) => setFiltroEstado(e.target.value)}
-        >
-          <option value="">Cualquier situación</option>
-          <option value="debe">Con deuda</option>
-          <option value="aldia">Al día</option>
-          <option value="sin_residente">Sin residente</option>
-        </select>
+        <div style={{ display: 'flex', gap: '12px', flex: '1 1 100%' }}>
+          <select
+            className="form-control"
+            style={{ flex: 1, minWidth: 0 }}
+            value={filtroTipo}
+            onChange={(e) => setFiltroTipo(e.target.value)}
+          >
+            <option value="">Todos los tipos</option>
+            {TIPOS_UNIDAD.map((t) => (
+              <option key={t.valor} value={t.valor}>
+                {t.etiqueta}
+              </option>
+            ))}
+          </select>
+          <select
+            className="form-control"
+            style={{ flex: 1, minWidth: 0 }}
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+          >
+            <option value="">Cualquier situación</option>
+            <option value="debe">Con deuda</option>
+            <option value="aldia">Al día</option>
+            <option value="sin_residente">Sin residente</option>
+          </select>
+        </div>
       </div>
 
       {(busqueda || filtroTipo || filtroEstado) && (
@@ -526,6 +529,11 @@ export default function Unidades() {
           {visibles.map((u) => {
             const gente = miembros.filter((m) => m.unit_id === u.id)
             const saldo = saldos[u.id] || 0
+            
+            // Separamos el nombre corto en dos partes usando el "·" como delimitador.
+            const partesNombre = nombreUnidadCorto(u).split(' · ')
+            const tituloPrincipal = partesNombre[0]
+            const tituloSecundario = partesNombre.slice(1).join(' · ')
 
             return (
               <div key={u.id} className={`tarjeta-unidad ${!u.is_active ? 'inactiva' : ''}`}>
@@ -551,10 +559,17 @@ export default function Unidades() {
                     }
                   }}
                 >
-                  <div className="unidad-titulo">
-                    <strong>{nombreUnidadCorto(u)}</strong>
-                    <span className="chip">{etiqueta(u.unit_type)}</span>
-                    {!u.is_active && <span className="chip chip-inactivo">Inactiva</span>}
+                  <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '4px' }}>
+                    <div className="unidad-titulo" style={{ marginBottom: tituloSecundario ? '2px' : '0' }}>
+                      <strong>{tituloPrincipal}</strong>
+                      <span className="chip">{etiqueta(u.unit_type)}</span>
+                      {!u.is_active && <span className="chip chip-inactivo">Inactiva</span>}
+                    </div>
+                    {tituloSecundario && (
+                      <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                        {tituloSecundario}
+                      </strong>
+                    )}
                   </div>
 
                   <div className="unidad-meta">

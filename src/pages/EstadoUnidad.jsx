@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtFecha, etiqueta } from '../lib/formato'
 import { Cargador } from '../components/UI'
+import { DetalleAviso, DetallePago } from '../components/Detalles'
 
 /**
  * Estado de cuenta detallado de UNA unidad, para el administrador.
@@ -26,7 +27,11 @@ export default function EstadoUnidad() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
+  // Modales
+  const [avisoDetalle, setAvisoDetalle] = useState(null)
+  const [pagoDetalle, setPagoDetalle] = useState(null)
+
+  const cargar = useCallback(() => {
     if (!id) return
     let activo = true
     setCargando(true)
@@ -39,9 +44,10 @@ export default function EstadoUnidad() {
         .eq('id', id)
         .maybeSingle(),
       supabase.rpc('unit_statement', { p_unit_id: id }),
+      // Extraemos payment_allocations para el cálculo real y invoice_items para el concepto
       supabase
         .from('invoices')
-        .select('id, invoice_number, issue_date, due_date, subtotal, previous_balance, total, status')
+        .select('id, invoice_number, issue_date, due_date, subtotal, previous_balance, total, status, payment_allocations(amount_usd), invoice_items(description)')
         .eq('unit_id', id)
         .order('issue_date', { ascending: false })
         .limit(36),
@@ -51,8 +57,6 @@ export default function EstadoUnidad() {
         .eq('unit_id', id)
         .order('payment_date', { ascending: false })
         .limit(36),
-      // Saldo canónico desde unit_balance (no se deduce del arreglo de
-      // movimientos, que depende del orden de las filas).
       supabase.rpc('unit_balance', { p_unit_id: id }),
     ])
       .then(([rU, rMov, rAvi, rPag, rSaldo]) => {
@@ -62,9 +66,23 @@ export default function EstadoUnidad() {
         if (rAvi.error) throw rAvi.error
         if (rPag.error) throw rPag.error
         if (rSaldo.error) throw rSaldo.error
+        
         setUnidad(rU.data)
         setMovimientos(rMov.data || [])
-        setAvisos(rAvi.data || [])
+        
+        // Lógica blindada de estados + Concepto principal
+        const avisosProcesados = (rAvi.data || []).map(a => {
+          const pagado = a.payment_allocations?.reduce((acc, p) => acc + Number(p.amount_usd), 0) || 0
+          let estadoReal = a.status
+          if (a.status !== 'anulado') {
+            estadoReal = pagado >= a.subtotal ? 'pagado' : (pagado > 0 ? 'parcial' : 'emitido')
+          }
+          // Tomamos la descripción del primer concepto cargado en el recibo
+          const conceptoPrincipal = a.invoice_items?.[0]?.description || ''
+          return { ...a, status: estadoReal, pagado, conceptoPrincipal }
+        })
+
+        setAvisos(avisosProcesados)
         setPagos(rPag.data || [])
         setSaldo(Number(rSaldo.data) || 0)
       })
@@ -75,6 +93,11 @@ export default function EstadoUnidad() {
       activo = false
     }
   }, [id])
+
+  useEffect(() => {
+    const cleanup = cargar()
+    return cleanup
+  }, [cargar])
 
   // Resumen de lo pendiente
   const avisosPendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))
@@ -173,9 +196,18 @@ export default function EstadoUnidad() {
         ) : (
           <ul className="list-group">
             {avisos.map((a) => (
-              <li key={a.id} className="list-item">
+              <li 
+                key={a.id} 
+                className="list-item list-item-clicable"
+                onClick={() => setAvisoDetalle(a.id)}
+              >
                 <div>
                   <strong>Aviso N° {a.invoice_number}</strong>
+                  {a.conceptoPrincipal && (
+                    <small className="bloque" style={{ display: 'block', color: 'var(--text-main)', margin: '2px 0 4px 0' }}>
+                      {a.conceptoPrincipal}
+                    </small>
+                  )}
                   <small>
                     Emitido {fmtFecha(a.issue_date)} · Vence {fmtFecha(a.due_date)}
                   </small>
@@ -198,7 +230,11 @@ export default function EstadoUnidad() {
         ) : (
           <ul className="list-group">
             {pagos.map((p) => (
-              <li key={p.id} className="list-item">
+              <li 
+                key={p.id} 
+                className="list-item list-item-clicable"
+                onClick={() => setPagoDetalle(p.id)}
+              >
                 <div>
                   <strong>{fmtFecha(p.payment_date)}</strong>
                   <small>
@@ -259,6 +295,22 @@ export default function EstadoUnidad() {
           </div>
         )}
       </div>
+
+      {/* Modales Inyectados */}
+      <DetalleAviso
+        invoiceId={avisoDetalle}
+        abierto={!!avisoDetalle}
+        onCerrar={() => setAvisoDetalle(null)}
+        onCambio={cargar}
+      />
+      <DetallePago
+        paymentId={pagoDetalle}
+        abierto={!!pagoDetalle}
+        onCerrar={() => setPagoDetalle(null)}
+        puedeGestionar={true}
+        esAdmin={true}
+        onCambio={cargar}
+      />
     </>
   )
 }

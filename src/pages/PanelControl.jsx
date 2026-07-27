@@ -50,8 +50,7 @@ export default function PanelControl() {
     cargar()
   }, [cargar])
 
-  // Recarga al volver a la pestaña y cada cinco minutos: el usuario no
-  // debería tener que pulsar un botón para ver datos actualizados.
+  // Recarga al volver a la pestaña y cada cinco minutos
   useEffect(() => {
     const alVolver = () => {
       if (document.visibilityState === 'visible') cargar()
@@ -124,6 +123,20 @@ export default function PanelControl() {
 
   return (
     <>
+      <style>{`
+        .tabla-morosidad .col-comercio { display: table-cell; }
+        .tabla-morosidad .info-movil { display: none; }
+        @media (max-width: 768px) {
+          .tabla-morosidad .col-comercio,
+          .tabla-morosidad .col-responsable { display: none !important; }
+          .tabla-morosidad .info-movil { 
+            display: block; 
+            margin-top: 2px; 
+            line-height: 1.15; 
+          }
+        }
+      `}</style>
+
       <div className="pagina-cabecera">
         <div>
           <h1>Panel de Control</h1>
@@ -235,6 +248,7 @@ export default function PanelControl() {
               <thead>
                 <tr>
                   <th className="col-unidad">Unidad</th>
+                  <th className="col-comercio">Comercio</th>
                   <th className="col-responsable">Responsable</th>
                   <th className="der col-dias">Días</th>
                   <th className="der">Saldo</th>
@@ -249,7 +263,18 @@ export default function PanelControl() {
                   >
                     <td className="col-unidad">
                       <strong>{d.codigo}</strong>
+                      <div className="info-movil">
+                        {d.business_name && (
+                          <small style={{ display: 'block', color: 'var(--text-main)', fontWeight: 500, marginBottom: '1px' }}>
+                            {d.business_name}
+                          </small>
+                        )}
+                        <small style={{ display: 'block', color: '#6b7280' }}>
+                          {d.contacto || 'Sin responsable'}
+                        </small>
+                      </div>
                     </td>
+                    <td className="col-comercio">{d.business_name || '—'}</td>
                     <td className="col-responsable">{d.contacto || '—'}</td>
                     <td className="der col-dias">
                       {d.dias_mora > 0 ? (

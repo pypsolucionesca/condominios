@@ -40,9 +40,10 @@ export default function MiCuenta() {
 
     Promise.all([
       supabase.rpc('unit_statement', { p_unit_id: unidadSel }),
+      // Traemos las asignaciones de pago para calcular el estado real en React
       supabase
         .from('invoices')
-        .select('id, invoice_number, issue_date, due_date, subtotal, total, status')
+        .select('id, invoice_number, issue_date, due_date, subtotal, total, status, payment_allocations(amount_usd)')
         .eq('unit_id', unidadSel)
         .order('issue_date', { ascending: false })
         .limit(24),
@@ -52,10 +53,6 @@ export default function MiCuenta() {
         .eq('unit_id', unidadSel)
         .order('payment_date', { ascending: false })
         .limit(24),
-      // Saldo canónico: unit_balance es la única fuente de verdad del
-      // saldo (suma débitos menos créditos del ledger). NO se deduce de la
-      // posición de un movimiento en el arreglo, que depende del orden con
-      // que la consulta devuelva las filas.
       supabase.rpc('unit_balance', { p_unit_id: unidadSel }),
     ])
       .then(([rMov, rAvi, rPag, rSaldo]) => {
@@ -64,8 +61,20 @@ export default function MiCuenta() {
         if (rAvi.error) throw rAvi.error
         if (rPag.error) throw rPag.error
         if (rSaldo.error) throw rSaldo.error
+        
         setMovimientos(rMov.data || [])
-        setAvisos(rAvi.data || [])
+        
+        // Lógica blindada: React decide el estado evaluando estrictamente el subtotal
+        const avisosProcesados = (rAvi.data || []).map(a => {
+          const pagado = a.payment_allocations?.reduce((acc, p) => acc + Number(p.amount_usd), 0) || 0
+          let estadoReal = a.status
+          if (a.status !== 'anulado') {
+            estadoReal = pagado >= a.subtotal ? 'pagado' : (pagado > 0 ? 'parcial' : 'emitido')
+          }
+          return { ...a, status: estadoReal, pagado }
+        })
+        
+        setAvisos(avisosProcesados)
         setPagos(rPag.data || [])
         setSaldo(Number(rSaldo.data) || 0)
       })
@@ -172,6 +181,7 @@ export default function MiCuenta() {
                     </div>
                     <div className="list-item-derecha">
                       <span className={`badge badge-${a.status}`}>{etiquetaEstado(a.status)}</span>
+                      {/* React usa el subtotal rigurosamente */}
                       <strong>{fmtUSD(a.subtotal)}</strong>
                     </div>
                   </li>

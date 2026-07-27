@@ -32,6 +32,38 @@ const ROL_COLOR = {
   residente_restringido: 'chip-restringido',
 }
 
+// ------------------------------------------------------------------
+// Funciones de formateo en tiempo real
+// ------------------------------------------------------------------
+
+const capitalizarNombres = (texto) => {
+  if (!texto) return ''
+  return texto
+    .toLowerCase()
+    .split(' ')
+    .map(palabra => palabra.charAt(0).toUpperCase() + palabra.slice(1))
+    .join(' ')
+}
+
+const formatearCedula = (texto) => {
+  if (!texto) return ''
+  const limpio = texto.toUpperCase().replace(/[^VEJGP0-9]/g, '')
+  const match = limpio.match(/^([VEJGP])?(\d+)$/)
+  
+  if (!match) return limpio
+  const letra = match[1] || ''
+  const numeros = match[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  
+  return letra ? `${letra}-${numeros}` : numeros
+}
+
+const formatearTelefono = (texto) => {
+  if (!texto) return ''
+  const limpio = texto.replace(/\D/g, '')
+  if (limpio.length <= 4) return limpio
+  return `${limpio.slice(0, 4)}-${limpio.slice(4, 11)}`
+}
+
 export default function GestionUsuarios() {
   const { perfil, esAdmin } = useAuth()
   const [usuarios, setUsuarios] = useState([])
@@ -39,16 +71,20 @@ export default function GestionUsuarios() {
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [confirmar, setConfirmar] = useState(null)
+  
+  // Estados para invitar
   const [panelInvitar, setPanelInvitar] = useState(false)
   const [formInvitar, setFormInvitar] = useState({ email: '', full_name: '', role: 'supervisor' })
   const [invitando, setInvitando] = useState(false)
 
+  // Estados para editar perfil
+  const [panelEditar, setPanelEditar] = useState(false)
+  const [formEditar, setFormEditar] = useState({ id: '', full_name: '', national_id: '', phone: '', email: '' })
+  const [editando, setEditando] = useState(false)
+
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      // usuarios_con_correo (SECURITY DEFINER, solo admin) trae el correo,
-      // que vive en auth.users y no es accesible directamente desde el
-      // cliente. Ya devuelve la lista ordenada por rol y nombre.
       const { data, error: err } = await supabase.rpc('usuarios_con_correo')
       if (err) throw err
       setUsuarios(data || [])
@@ -64,9 +100,7 @@ export default function GestionUsuarios() {
     cargar()
   }, [cargar])
 
-  // Invita a un nuevo administrador o supervisor. Usa la misma Edge
-  // Function que las invitaciones de residentes, pero sin unidad: estos
-  // roles operan el sistema y no quedan atados a un apartamento.
+  // Invita a un nuevo administrador o supervisor.
   const invitarUsuario = async (e) => {
     e.preventDefault()
     setError(null)
@@ -119,6 +153,39 @@ export default function GestionUsuarios() {
     }
   }
 
+  // Edita los datos de perfil del usuario (nombre, cédula, teléfono)
+  const guardarEdicion = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setAviso(null)
+
+    if (!formEditar.full_name.trim()) {
+      return setError('El nombre no puede estar vacío.')
+    }
+
+    setEditando(true)
+    try {
+      const { error: err } = await supabase
+        .from('profiles')
+        .update({
+          full_name: formEditar.full_name.trim(),
+          national_id: formEditar.national_id?.trim() || null,
+          phone: formEditar.phone?.trim() || null,
+        })
+        .eq('id', formEditar.id)
+
+      if (err) throw err
+
+      setAviso('Datos del residente actualizados correctamente.')
+      setPanelEditar(false)
+      await cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setEditando(false)
+    }
+  }
+
   // Ejecuta una RPC de gestión y refresca la lista
   const ejecutar = async (rpc, params, mensajeOk) => {
     setError(null)
@@ -127,6 +194,25 @@ export default function GestionUsuarios() {
       const { error: err } = await supabase.rpc(rpc, params)
       if (err) throw err
       setAviso(mensajeOk)
+      await cargar()
+    } catch (err) {
+      setError(mensajeError(err))
+    }
+    setConfirmar(null)
+  }
+
+  // Función para desvincular a un residente de todas sus unidades
+  const ejecutarDesvinculacion = async (userId) => {
+    setError(null)
+    setAviso(null)
+    try {
+      const { error: err } = await supabase
+        .from('unit_members')
+        .delete()
+        .eq('user_id', userId)
+
+      if (err) throw err
+      setAviso('El residente ha sido desvinculado de la unidad correctamente.')
       await cargar()
     } catch (err) {
       setError(mensajeError(err))
@@ -147,10 +233,39 @@ export default function GestionUsuarios() {
 
   // Acciones disponibles según el rol de cada usuario
   const accionesDe = (u) => {
-    if (u.id === perfil?.id) return [] // no puede cambiarse a sí mismo aquí
     const acc = []
 
+    acc.push({
+      icono: '✏️',
+      texto: 'Editar datos',
+      onClick: () => {
+        setFormEditar({ 
+          id: u.id, 
+          full_name: u.full_name || '', 
+          national_id: u.national_id || '',
+          phone: u.phone || '',
+          email: u.email || ''
+        })
+        setPanelEditar(true)
+      },
+    })
+
+    if (u.id === perfil?.id) return acc 
+
     if (u.role === 'resident' || u.role === 'residente_restringido') {
+      acc.push({
+        icono: '🚪',
+        texto: 'Desvincular de unidad',
+        onClick: () =>
+          setConfirmar({
+            titulo: 'Desvincular residente',
+            mensaje: `¿Está seguro de que desea remover a ${u.full_name} de su unidad? Ya no podrá ver los estados de cuenta correspondientes ni reportar pagos para ella. Su cuenta seguirá existiendo en el sistema.`,
+            texto: 'Sí, desvincular',
+            peligro: true,
+            accion: () => ejecutarDesvinculacion(u.id),
+          }),
+      })
+
       acc.push({
         icono: '⬆️',
         texto: 'Hacer supervisor',
@@ -240,31 +355,56 @@ export default function GestionUsuarios() {
 
       <ul className="list-group">
         {usuarios.map((u) => (
-          <li key={u.id} className="list-item">
-            <span className="usuario-avatar-vacio" aria-hidden="true">
+          <li 
+            key={u.id} 
+            className="list-item" 
+            style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              padding: '10px 0', 
+              gap: '12px' 
+            }}
+          >
+            <span className="usuario-avatar-vacio" aria-hidden="true" style={{ flexShrink: 0, width: '36px', height: '36px', fontSize: '1rem' }}>
               {u.role === 'admin' ? '👑' : u.role === 'supervisor' ? '🛠️' : '👤'}
             </span>
-            <div style={{ minWidth: 0 }}>
-              <strong>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <strong style={{ fontSize: '0.95rem', display: 'block', marginBottom: '3px' }}>
                 {u.full_name}
-                {u.id === perfil?.id && <span className="texto-ayuda"> · usted</span>}
+                {u.id === perfil?.id && <span className="texto-ayuda" style={{ display: 'inline', marginLeft: '4px' }}>· usted</span>}
               </strong>
-              <small>
-                <span className={`chip ${ROL_COLOR[u.role] || ''}`}>
+              
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
+                <span className={`chip ${ROL_COLOR[u.role] || ''}`} style={{ padding: '2px 8px', fontSize: '0.68rem' }}>
                   {ROL_ETIQUETA[u.role] || u.role}
                 </span>
-                {' '}
                 {u.cuenta_activa ? (
-                  <span className="chip chip-exito">✓ Activo</span>
+                  <span className="chip chip-exito" style={{ padding: '2px 8px', fontSize: '0.68rem' }}>✓ Activo</span>
                 ) : (
-                  <span className="chip chip-aviso">Invitación pendiente</span>
+                  <span className="chip chip-aviso" style={{ padding: '2px 8px', fontSize: '0.68rem' }}>Pendiente</span>
                 )}
-                {!u.is_active && ' · inactivo'}
-                {u.phone ? ` · ${u.phone}` : ''}
+                {!u.is_active && <span className="chip chip-inactivo" style={{ padding: '2px 8px', fontSize: '0.68rem' }}>Inactivo</span>}
+              </div>
+
+              <small style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                {[
+                  u.national_id ? `C.I.: ${formatearCedula(u.national_id)}` : null,
+                  u.phone ? `Telf.: ${formatearTelefono(u.phone)}` : null
+                ].filter(Boolean).join(' · ')}
               </small>
-              {u.email && <small className="usuario-correo">{u.email}</small>}
+              
+              {u.email && <small className="usuario-correo" style={{ display: 'block', fontSize: '0.78rem', marginTop: '1px' }}>{u.email}</small>}
             </div>
-            <div className="list-item-derecha">
+            
+            <div 
+              className="list-item-derecha" 
+              style={{ 
+                width: 'auto', 
+                flexDirection: 'column', 
+                alignItems: 'flex-end', 
+                flexShrink: 0 
+              }}
+            >
               {accionesDe(u).length > 0 && <MenuAcciones acciones={accionesDe(u)} />}
             </div>
           </li>
@@ -281,6 +421,7 @@ export default function GestionUsuarios() {
         onCancelar={() => setConfirmar(null)}
       />
 
+      {/* Panel para invitar admin/supervisor */}
       <Panel
         abierto={panelInvitar}
         titulo="Invitar administrador o supervisor"
@@ -316,7 +457,7 @@ export default function GestionUsuarios() {
             <input
               className="form-control"
               value={formInvitar.full_name}
-              onChange={(e) => setFormInvitar({ ...formInvitar, full_name: e.target.value })}
+              onChange={(e) => setFormInvitar({ ...formInvitar, full_name: capitalizarNombres(e.target.value) })}
               placeholder="Nombre y apellido"
             />
           </div>
@@ -348,6 +489,82 @@ export default function GestionUsuarios() {
             </button>
             <button className="btn btn-primary" disabled={invitando}>
               {invitando ? 'Enviando…' : 'Enviar invitación'}
+            </button>
+          </div>
+        </form>
+      </Panel>
+
+      {/* Panel para editar datos de usuario */}
+      <Panel
+        abierto={panelEditar}
+        titulo="Editar datos del usuario"
+        onCerrar={() => setPanelEditar(false)}
+        ancho={480}
+      >
+        <form onSubmit={guardarEdicion}>
+          <p className="texto-ayuda" style={{ marginBottom: 16 }}>
+            Modifique los datos personales del residente. Para cambiar la relación con una unidad (Propietario/Inquilino), debe hacerlo desde la vista de la unidad.
+          </p>
+
+          {error && (
+            <Aviso tipo="error" onCerrar={() => setError(null)}>
+              {error}
+            </Aviso>
+          )}
+
+          <div className="form-group">
+            <label>Correo electrónico</label>
+            <input
+              type="email"
+              className="form-control"
+              value={formEditar.email}
+              disabled
+              style={{ backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'not-allowed' }}
+            />
+            <small className="texto-ayuda">El correo está vinculado a la cuenta de autenticación en Supabase y no puede ser modificado por esta vía.</small>
+          </div>
+
+          <div className="form-group">
+            <label>Nombre o Razón Social *</label>
+            <input
+              className="form-control"
+              value={formEditar.full_name}
+              onChange={(e) => setFormEditar({ ...formEditar, full_name: capitalizarNombres(e.target.value) })}
+              placeholder="Nombre y apellido"
+              autoFocus
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Cédula / RIF</label>
+            <input
+              className="form-control"
+              value={formEditar.national_id}
+              onChange={(e) => setFormEditar({ ...formEditar, national_id: formatearCedula(e.target.value) })}
+              placeholder="V-12.345.678"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Teléfono</label>
+            <input
+              className="form-control"
+              value={formEditar.phone}
+              onChange={(e) => setFormEditar({ ...formEditar, phone: formatearTelefono(e.target.value) })}
+              placeholder="0414-1234567"
+            />
+          </div>
+
+          <div className="panel-acciones">
+            <button
+              type="button"
+              className="btn btn-secundario"
+              onClick={() => setPanelEditar(false)}
+            >
+              Cancelar
+            </button>
+            <button className="btn btn-primary" disabled={editando}>
+              {editando ? 'Guardando…' : 'Guardar cambios'}
             </button>
           </div>
         </form>

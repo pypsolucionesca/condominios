@@ -202,8 +202,6 @@ export default function Tesoreria() {
       }
 
       if (editando) {
-        // La moneda se cambia por una función que verifica que no haya
-        // movimientos: alterarla después corrompería los importes.
         if (formCuenta.currency !== editando.currency) {
           const { error: eM } = await supabase.rpc('change_account_currency', {
             p_account_id: editando.id,
@@ -245,9 +243,6 @@ export default function Tesoreria() {
     if (!formGasto.account_id) return setError('Seleccione la cuenta de origen.')
     if (!formGasto.description.trim()) return setError('Describa el gasto.')
 
-    // El monto en dólares es la base contable. Si el gasto es en bolívares
-    // y el usuario solo llenó el monto en Bs., se deriva el USD con la tasa
-    // del día para no bloquear el registro.
     let montoUSD = Number(formGasto.amount_usd)
     if ((!montoUSD || montoUSD <= 0) && formGasto.currency === 'VES') {
       const bs = Number(formGasto.amount)
@@ -263,8 +258,6 @@ export default function Tesoreria() {
       )
     }
 
-    // Lo que sale de la cuenta: en bolívares se usa el equivalente,
-    // que el administrador puede haber ajustado si el pago real difiere.
     const montoPago =
       formGasto.currency === 'USD'
         ? montoUSD
@@ -571,8 +564,6 @@ export default function Tesoreria() {
   const abrirPagoEmpleado = (persona) => {
     const periodo = { diario: 'Jornada', semanal: 'Semana', quincenal: 'Quincena', mensual: 'Mes' }
 
-    // El salario puede estar configurado en bolívares; se normaliza a
-    // dólares porque es la moneda base de la contabilidad.
     const salarioUSD =
       persona.salary_currency === 'VES' && tasaHoy?.tasa
         ? (Number(persona.salary_amount) / tasaHoy.tasa).toFixed(2)
@@ -604,8 +595,6 @@ export default function Tesoreria() {
     if (!montoUSD || montoUSD <= 0) return setError('Indique el monto en dólares.')
     if (!pagoEmpleado.account_id) return setError('Seleccione la cuenta de origen.')
 
-    // Tasa efectiva: la editable (permite registrar pagos con fecha
-    // pasada usando la tasa de ese día, no la de hoy)
     const tasaEfectiva = Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 0
 
     const montoPago =
@@ -619,7 +608,6 @@ export default function Tesoreria() {
 
     setEnviando(true)
     try {
-      // Comprobante opcional (foto/PDF del pago) para el empleado.
       let rutaRecibo = null
       if (reciboEmpleado) {
         const { subirComprobante } = await import('../lib/imagenes')
@@ -627,18 +615,21 @@ export default function Tesoreria() {
         rutaRecibo = res.ruta || res.url || null
       }
 
+      // Buscamos automáticamente si existe una categoría llamada "Nómina" o "Personal" para preasignarla
+      const catNomina = categorias.find(
+        (c) => c.name.toLowerCase().includes('nómina') || c.name.toLowerCase().includes('personal') || c.name.toLowerCase().includes('sueldos')
+      )
+
       const { data: idGasto, error: err } = await supabase.rpc('register_expense', {
         p_account_id: pagoEmpleado.account_id,
         p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
         p_amount: montoPago,
         p_currency: pagoEmpleado.currency,
         p_expense_date: pagoEmpleado.payment_date,
-        p_category_id: null,
+        p_category_id: catNomina ? catNomina.id : null, // Asignación automática preseleccionada
         p_supplier: pagoEmpleado.persona.full_name,
         p_invoice_ref: pagoEmpleado.operacion.trim() || null,
         p_receipt_url: rutaRecibo,
-        // Tasa que el usuario fijó para la fecha del pago. Permite registrar
-        // pagos viejos aunque no haya tasa oficial de ese día.
         p_rate: pagoEmpleado.currency === 'VES' ? tasaEfectiva : null,
       })
       if (err) throw err
@@ -654,8 +645,6 @@ export default function Tesoreria() {
       cerrarPanel()
       cargar()
 
-      // El recibo PDF solo se genera si el usuario lo pidió (no siempre se
-      // quiere). Es un paso opcional, separado del registro del pago.
       if (queridoRecibo) {
         const { data: gasto } = await supabase
           .from('expenses')
@@ -934,9 +923,6 @@ export default function Tesoreria() {
                             texto: 'Ver movimientos',
                             onClick: () => setLibroCuenta(c.id),
                           },
-                          // Eliminar una cuenta es una acción de gobierno:
-                          // solo el administrador. El backend además la
-                          // restringe, así que no se muestra al supervisor.
                           ...(esAdmin
                             ? [
                                 {
@@ -1503,7 +1489,6 @@ export default function Tesoreria() {
                 setFormGasto({
                   ...formGasto,
                   amount_usd: usd,
-                  // Al cambiar el monto se recalcula el equivalente
                   amount:
                     formGasto.currency === 'VES' && tasaHoy?.tasa && usd
                       ? (Number(usd) * tasaHoy.tasa).toFixed(2)
@@ -1537,10 +1522,6 @@ export default function Tesoreria() {
                       value={formGasto.amount}
                       onChange={(e) => {
                         const bs = e.target.value
-                        // Al ajustar el monto en bolívares se recalcula el
-                        // equivalente en dólares con la tasa del día. Así
-                        // amount_usd nunca queda vacío y el gasto se registra
-                        // aunque el usuario solo haya escrito el monto en Bs.
                         setFormGasto({
                           ...formGasto,
                           amount: bs,
@@ -1556,8 +1537,6 @@ export default function Tesoreria() {
                     </small>
                   </div>
 
-                  {/* La tasa y el total a pagar van al final, como resumen
-                      de lo ingresado arriba. */}
                   <div className="conversion-bloque">
                     <div className="conversion-linea">
                       <span>Tasa del {fmtFecha(tasaHoy.fecha)}</span>
@@ -1651,9 +1630,6 @@ export default function Tesoreria() {
                 onChange={(e) => setFormGasto({ ...formGasto, supplier: e.target.value })}
                 placeholder="Elija uno o escriba el nombre"
               />
-              {/* Sugiere los proveedores ya registrados (payees que no son
-                  empleados). El usuario puede elegir uno o escribir uno
-                  nuevo. Si no hay ninguno, se indica dónde crearlos. */}
               <datalist id="lista-proveedores">
                 {personal
                   .filter((p) => p.kind !== 'empleado')
@@ -1942,7 +1918,7 @@ export default function Tesoreria() {
                     <div className="form-group">
                       <label>Fecha de ingreso</label>
                       <CampoFecha
-                className="form-control"
+                        className="form-control"
                         value={formPersona.hired_at}
                         onChange={(v) =>
                           setFormPersona({ ...formPersona, hired_at: v })
@@ -2346,7 +2322,7 @@ export default function Tesoreria() {
               <div className="form-group">
                 <label>Fecha del pago *</label>
                 <CampoFecha
-                className="form-control"
+                  className="form-control"
                   value={pagoCompromiso.payment_date}
                   onChange={(v) =>
                     setPagoCompromiso({ ...pagoCompromiso, payment_date: v })
@@ -2615,8 +2591,6 @@ export default function Tesoreria() {
                         setPagoEmpleado({
                           ...pagoEmpleado,
                           tasa_manual: t,
-                          // recalcula el monto en Bs. con la tasa nueva,
-                          // salvo que el usuario ya lo haya editado a mano
                           amount:
                             Number(t) && pagoEmpleado.amount_usd
                               ? (Number(pagoEmpleado.amount_usd) * Number(t)).toFixed(2)
