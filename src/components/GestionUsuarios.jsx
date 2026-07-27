@@ -253,6 +253,12 @@ export default function GestionUsuarios() {
                 <span className={`chip ${ROL_COLOR[u.role] || ''}`}>
                   {ROL_ETIQUETA[u.role] || u.role}
                 </span>
+                {' '}
+                {u.cuenta_activa ? (
+                  <span className="chip chip-exito">✓ Activo</span>
+                ) : (
+                  <span className="chip chip-aviso">Invitación pendiente</span>
+                )}
                 {!u.is_active && ' · inactivo'}
                 {u.phone ? ` · ${u.phone}` : ''}
               </small>

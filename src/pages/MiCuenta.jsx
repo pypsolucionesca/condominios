@@ -273,7 +273,7 @@ function etiquetaEstado(s) {
   const mapa = {
     borrador: 'Borrador',
     emitido: 'Pendiente',
-    parcial: 'Abonado',
+    parcial: 'Pago parcial',
     pagado: 'Pagado',
     exonerado: 'Exonerado',
     anulado: 'Anulado',

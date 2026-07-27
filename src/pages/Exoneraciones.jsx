@@ -647,8 +647,11 @@ export default function Exoneraciones() {
                       }
                     />
                     <div className="aviso-datos">
-                      <strong>{p.periodo}</strong>
-                      <small>Aviso N° {p.invoice_number}</small>
+                      <strong>{p.concepto || p.periodo}</strong>
+                      <small>
+                        Aviso N° {p.invoice_number}
+                        {p.dias_mora > 0 && ` · ${p.dias_mora} días de mora`}
+                      </small>
                     </div>
                     <div className="aviso-monto">
                       <strong>{fmtUSD(p.pendiente)}</strong>

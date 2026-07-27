@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta } from '../lib/formato'
-import { Indicador, Aviso, Vacio, Cargador } from '../components/UI'
+import { Indicador, Aviso, Vacio, Cargador, Panel } from '../components/UI'
+import CampoFecha from '../components/CampoFecha'
 import GastosPorCategoria from '../components/GastosPorCategoria'
 
 export default function PanelControl() {
@@ -14,6 +15,12 @@ export default function PanelControl() {
   const [morosidad, setMorosidad] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
+  const [panelInforme, setPanelInforme] = useState(false)
+  const [rango, setRango] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 2)
+    return { desde: d.toISOString().slice(0, 10), hasta: new Date().toISOString().slice(0, 10) }
+  })
 
   const cargar = useCallback(async () => {
     if (!perfil?.condominium_id) {
@@ -58,13 +65,8 @@ export default function PanelControl() {
     }
   }, [cargar])
 
-  const descargarInforme = async () => {
+  const descargarInforme = async (desdeStr, hastaStr) => {
     try {
-      const desde = new Date()
-      desde.setMonth(desde.getMonth() - 2)
-      const desdeStr = desde.toISOString().slice(0, 10)
-      const hastaStr = new Date().toISOString().slice(0, 10)
-
       const [rG, rC] = await Promise.all([
         supabase
           .from('expenses')
@@ -91,7 +93,8 @@ export default function PanelControl() {
         logoDataUrl: logo,
       })
 
-      descargarPdf(doc, `Informe-gastos-${hastaStr}.pdf`)
+      descargarPdf(doc, `Informe-gastos-${desdeStr}_a_${hastaStr}.pdf`)
+      setPanelInforme(false)
     } catch (err) {
       setError(mensajeError(err))
     }
@@ -280,7 +283,7 @@ export default function PanelControl() {
         <div className="card-header-flex">
           <h2>Gastos recientes</h2>
           {(datos.gastos_recientes || []).length > 0 && (
-            <button className="btn btn-secundario btn-auto" onClick={descargarInforme}>
+            <button className="btn btn-secundario btn-auto" onClick={() => setPanelInforme(true)}>
               Informe PDF
             </button>
           )}
@@ -324,6 +327,49 @@ export default function PanelControl() {
           </div>
         )}
       </div>
+
+      <Panel
+        abierto={panelInforme}
+        titulo="Informe de gastos en PDF"
+        onCerrar={() => setPanelInforme(false)}
+        ancho={420}
+      >
+        <p className="texto-ayuda" style={{ marginBottom: 16 }}>
+          Elija el rango de fechas del informe.
+        </p>
+        <div className="grid-form">
+          <div className="form-group">
+            <label>Desde</label>
+            <CampoFecha
+              value={rango.desde}
+              onChange={(v) => setRango({ ...rango, desde: v })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Hasta</label>
+            <CampoFecha
+              value={rango.hasta}
+              onChange={(v) => setRango({ ...rango, hasta: v })}
+            />
+          </div>
+        </div>
+        <div className="panel-acciones">
+          <button
+            type="button"
+            className="btn btn-secundario"
+            onClick={() => setPanelInforme(false)}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => descargarInforme(rango.desde, rango.hasta)}
+          >
+            Generar PDF
+          </button>
+        </div>
+      </Panel>
     </>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { subirLogoUnidad } from '../lib/imagenes'
@@ -40,9 +41,11 @@ const FORM_INVITACION = {
 
 export default function Unidades() {
   const { perfil, esAdmin } = useAuth()
+  const navigate = useNavigate()
 
   const [unidades, setUnidades] = useState([])
   const [miembros, setMiembros] = useState([])
+  const [activacion, setActivacion] = useState({})
   const [saldos, setSaldos] = useState({})
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
@@ -66,7 +69,7 @@ export default function Unidades() {
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const [rU, rM, rS] = await Promise.all([
+      const [rU, rM, rS, rAct] = await Promise.all([
         supabase
           .from('units')
           .select(
@@ -79,6 +82,8 @@ export default function Unidades() {
             'id, relation, is_primary, unit_id, profiles:user_id (id, full_name, national_id, phone, avatar_url, is_active)'
           ),
         supabase.from('units_with_balance').select('id, balance_usd'),
+        // Estado de activación (si el usuario ya creó su clave e ingresó).
+        supabase.rpc('usuarios_activacion'),
       ])
 
       if (rU.error) throw rU.error
@@ -86,6 +91,10 @@ export default function Unidades() {
 
       setUnidades(rU.data || [])
       setMiembros(rM.data || [])
+
+      const mapaAct = {}
+      for (const a of rAct.data || []) mapaAct[a.id] = a.cuenta_activa
+      setActivacion(mapaAct)
 
       const mapa = {}
       for (const s of rS.data || []) mapa[s.id] = Number(s.balance_usd) || 0
@@ -570,6 +579,22 @@ export default function Unidades() {
                           {m.profiles?.full_name || 'Sin nombre'}
                           <em>{etiqueta(m.relation)}</em>
                           {m.is_primary && <b title="Contacto principal">★</b>}
+                          {m.profiles?.id &&
+                            (activacion[m.profiles.id] ? (
+                              <b
+                                title="Ya creó su clave e ingresó"
+                                style={{ color: '#16a34a' }}
+                              >
+                                ✓
+                              </b>
+                            ) : (
+                              <b
+                                title="Invitación pendiente: aún no ingresa"
+                                style={{ color: '#d97706' }}
+                              >
+                                ⏳
+                              </b>
+                            ))}
                           {esAdmin && (
                             <button
                               className="residente-quitar"
@@ -810,6 +835,15 @@ export default function Unidades() {
       >
         {detalleUnidad && (
           <div className="detalle-unidad">
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%', marginBottom: 16 }}
+              onClick={() => navigate(`/unidad/${detalleUnidad.unidad.id}`)}
+            >
+              Ver estado de cuenta detallado
+            </button>
+
             {detalleUnidad.unidad.unit_type === 'local_comercial' && (
               <div className="detalle-seccion">
                 <h4 className="subtitulo">Datos del comercio</h4>

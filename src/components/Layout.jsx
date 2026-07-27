@@ -17,13 +17,19 @@ export default function Layout() {
   //  - Residente ve su cuenta y transparencia.
   let enlaces
   if (puedeOperar) {
-    enlaces = [
+    enlaces = []
+    // Si el operador (admin/supervisor) está vinculado a una unidad, su
+    // cuenta personal va PRIMERO, igual que para un residente.
+    if (unidades.length > 0) {
+      enlaces.push({ to: '/mi-cuenta', icono: '📄', texto: 'Mi cuenta' })
+    }
+    enlaces.push(
       { to: '/panel', icono: '📊', texto: 'Panel' },
       { to: '/unidades', icono: '🏢', texto: 'Unidades' },
       { to: '/cobranza', icono: '📄', texto: 'Cobranza' },
       { to: '/pagos', icono: '💵', texto: 'Pagos' },
-      { to: '/tesoreria', icono: '🏦', texto: 'Tesorería' },
-    ]
+      { to: '/tesoreria', icono: '🏦', texto: 'Tesorería' }
+    )
     // Gobierno: solo el administrador
     if (esAdmin) {
       enlaces.push({ to: '/exoneraciones', icono: '🤲', texto: 'Exoneraciones' })

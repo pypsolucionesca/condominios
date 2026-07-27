@@ -58,6 +58,7 @@ export default function Tesoreria() {
 
   const [formGasto, setFormGasto] = useState(FORM_GASTO)
   const [reciboGasto, setReciboGasto] = useState(null)
+  const [reciboEmpleado, setReciboEmpleado] = useState(null)
 
   const FORM_PERSONA = {
     kind: 'empleado',
@@ -112,6 +113,7 @@ export default function Tesoreria() {
     concepto: '',
     tasa_manual: '',     // tasa editable para pagos con fecha pasada
     operacion: '',       // número de operación (obligatorio si es banco)
+    generar_recibo: true, // si se descarga el recibo PDF tras pagar
   })
 
   const [formMovimiento, setFormMovimiento] = useState({
@@ -179,6 +181,7 @@ export default function Tesoreria() {
   const cerrarPanel = () => {
     setPanel(null)
     setEditando(null)
+    setReciboEmpleado(null)
   }
 
   // ------------------------------------------------------------- cuentas
@@ -616,6 +619,14 @@ export default function Tesoreria() {
 
     setEnviando(true)
     try {
+      // Comprobante opcional (foto/PDF del pago) para el empleado.
+      let rutaRecibo = null
+      if (reciboEmpleado) {
+        const { subirComprobante } = await import('../lib/imagenes')
+        const res = await subirComprobante(reciboEmpleado, perfil.condominium_id)
+        rutaRecibo = res.ruta || res.url || null
+      }
+
       const { data: idGasto, error: err } = await supabase.rpc('register_expense', {
         p_account_id: pagoEmpleado.account_id,
         p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
@@ -625,7 +636,7 @@ export default function Tesoreria() {
         p_category_id: null,
         p_supplier: pagoEmpleado.persona.full_name,
         p_invoice_ref: pagoEmpleado.operacion.trim() || null,
-        p_receipt_url: null,
+        p_receipt_url: rutaRecibo,
         // Tasa que el usuario fijó para la fecha del pago. Permite registrar
         // pagos viejos aunque no haya tasa oficial de ese día.
         p_rate: pagoEmpleado.currency === 'VES' ? tasaEfectiva : null,
@@ -638,18 +649,22 @@ export default function Tesoreria() {
         .eq('id', idGasto)
 
       setAviso(`Pago registrado a ${pagoEmpleado.persona.full_name}.`)
+      const queridoRecibo = pagoEmpleado.generar_recibo
+      const personaPago = pagoEmpleado.persona
       cerrarPanel()
       cargar()
 
-      // Se ofrece el recibo de inmediato: es el momento en que se necesita
-      const { data: gasto } = await supabase
-        .from('expenses')
-        .select('*, accounts:account_id (name)')
-        .eq('id', idGasto)
-        .single()
-
-      if (gasto) {
-        setTimeout(() => descargarRecibo({ ...gasto, payee_id: pagoEmpleado.persona.id }), 400)
+      // El recibo PDF solo se genera si el usuario lo pidió (no siempre se
+      // quiere). Es un paso opcional, separado del registro del pago.
+      if (queridoRecibo) {
+        const { data: gasto } = await supabase
+          .from('expenses')
+          .select('*, accounts:account_id (name)')
+          .eq('id', idGasto)
+          .single()
+        if (gasto) {
+          setTimeout(() => descargarRecibo({ ...gasto, payee_id: personaPago.id }), 400)
+        }
       }
     } catch (err) {
       setError(mensajeError(err))
@@ -2674,16 +2689,71 @@ export default function Tesoreria() {
               )}
             </div>
 
-            <p className="texto-ayuda">
-              Al registrar el pago se descargará el recibo para firma del beneficiario.
-            </p>
+            <div className="form-group">
+              <label>Comprobante del pago (opcional)</label>
+              <div className="zona-archivo">
+                {reciboEmpleado ? (
+                  <div className="archivo-pdf">
+                    <span aria-hidden="true">
+                      {reciboEmpleado.type === 'application/pdf' ? '📄' : '🧾'}
+                    </span>
+                    <strong>{reciboEmpleado.name}</strong>
+                  </div>
+                ) : (
+                  <div className="zona-archivo-vacia">
+                    <span aria-hidden="true">📎</span>
+                    <small>Foto o PDF del comprobante</small>
+                  </div>
+                )}
+                <div className="grupo-botones" style={{ marginTop: 10 }}>
+                  <label className="btn-mini btn-primary" style={{ cursor: 'pointer' }}>
+                    Seleccionar
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      hidden
+                      onChange={(e) => setReciboEmpleado(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  {reciboEmpleado && (
+                    <button
+                      type="button"
+                      className="btn-mini btn-secundario"
+                      onClick={() => setReciboEmpleado(null)}
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <label className="checkbox-linea" style={{ marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={pagoEmpleado.generar_recibo}
+                onChange={(e) =>
+                  setPagoEmpleado({ ...pagoEmpleado, generar_recibo: e.target.checked })
+                }
+              />
+              <span>
+                Generar recibo en PDF para firma del beneficiario
+                <small className="bloque texto-ayuda">
+                  Puede descargarlo después desde el menú del pago si no lo genera ahora.
+                </small>
+              </span>
+            </label>
 
             <div className="panel-acciones">
               <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
                 Cancelar
               </button>
               <button className="btn btn-primary" disabled={enviando}>
-                {enviando ? 'Registrando…' : 'Pagar y generar recibo'}
+                {enviando
+                  ? 'Registrando…'
+                  : pagoEmpleado.generar_recibo
+                  ? 'Pagar y generar recibo'
+                  : 'Registrar pago'}
               </button>
             </div>
           </form>
