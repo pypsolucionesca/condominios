@@ -312,9 +312,11 @@ export default function Cobranza() {
     <>
       <style>{`
         .tabla-cobranza .col-comercio { display: table-cell; }
+        .tabla-cobranza .celda-unidad { width: 200px; min-width: 200px; }
         .tabla-cobranza .info-movil { display: none; }
         @media (max-width: 768px) {
           .tabla-cobranza .col-comercio { display: none !important; }
+          .tabla-cobranza .celda-unidad { width: 180px; min-width: 180px; }
           .tabla-cobranza .info-movil { 
             display: block; 
             margin-top: 2px; 
@@ -396,7 +398,7 @@ export default function Cobranza() {
               <thead>
                 <tr>
                   <th>N°</th>
-                  <th>Unidad</th>
+                  <th className="celda-unidad">Unidad</th>
                   <th className="col-comercio">Comercio</th>
                   <th>Concepto</th>
                   <th>Emitido</th>
@@ -412,7 +414,6 @@ export default function Cobranza() {
                     ['emitido', 'parcial'].includes(a.status) &&
                     new Date(a.due_date) < new Date(hoy())
 
-                  // Forzamos visualmente que 'parcial' se vea como 'pagado'
                   const estadoVisual = a.status === 'parcial' ? 'pagado' : a.status
                   const etiquetaVisual = a.status === 'parcial' ? 'Pagado' : etiqueta(a.status)
 
@@ -428,7 +429,7 @@ export default function Cobranza() {
                       <td>
                         <strong>{a.invoice_number}</strong>
                       </td>
-                      <td>
+                      <td className="celda-unidad">
                         <strong>
                           {esComercial ? a.units.business_name : (a.units?.code || '—')}
                         </strong>
@@ -773,7 +774,7 @@ export default function Cobranza() {
       <DetalleAviso
         invoiceId={avisoDetalle}
         abierto={Boolean(avisoDetalle)}
-        onCerrar={() => setAvisoDetalle(null)}
+        onCerrar={() => setAvvisoDetalle ? setAvisoDetalle(null) : setAvisoDetalle(null)}
         onCambio={cargar}
       />
 
