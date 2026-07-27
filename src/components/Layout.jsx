@@ -5,7 +5,7 @@ import Campana from './Campana'
 import LimiteError from './LimiteError'
 
 export default function Layout() {
-  const { perfil, esAdmin, esSupervisor, puedeOperar, cerrarSesion, unidades, finanzasPublicas } =
+  const { perfil, esAdmin, esSupervisor, puedeOperar, cerrarSesion, unidades, esRestringido } =
     useAuth()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const navigate = useNavigate()
@@ -14,7 +14,8 @@ export default function Layout() {
   //  - Admin y supervisor OPERAN: ven panel, unidades, cobranza, pagos,
   //    tesorería. Las opciones de GOBIERNO (exoneraciones, ajustes) quedan
   //    solo para el admin.
-  //  - Residente ve su cuenta y transparencia.
+  //  - Residente completo: ve su cuenta, reportar pago, transparencia y unidades.
+  //  - Residente restringido: solo ve su cuenta y reportar pago.
   let enlaces
   if (puedeOperar) {
     enlaces = []
@@ -39,9 +40,16 @@ export default function Layout() {
     enlaces = [
       { to: '/mi-cuenta', icono: '📄', texto: 'Mi cuenta' },
       { to: '/reportar-pago', icono: '💵', texto: 'Reportar pago' },
-      { to: '/panel', icono: '📊', texto: 'Transparencia' },
-      { to: '/unidades', icono: '🏢', texto: 'Unidades' },
     ]
+    
+    // Si el residente NO es restringido (es decir, es de acceso full), 
+    // se le muestran la pestaña de transparencia y unidades.
+    if (!esRestringido) {
+      enlaces.push(
+        { to: '/panel', icono: '📊', texto: 'Transparencia' },
+        { to: '/unidades', icono: '🏢', texto: 'Unidades' }
+      )
+    }
   }
 
   // Texto de rol que se muestra bajo el nombre del usuario, para que

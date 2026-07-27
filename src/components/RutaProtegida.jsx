@@ -18,8 +18,8 @@ export function Cargando({ mensaje = 'Cargando…' }) {
  * políticas RLS de Postgres, que se aplican aunque alguien manipule el
  * JavaScript del navegador.
  */
-export function RutaProtegida({ children, soloAdmin = false, soloOperador = false }) {
-  const { autenticado, cargando, esAdmin, puedeOperar, errorPerfil, cerrarSesion } = useAuth()
+export function RutaProtegida({ children, soloAdmin = false, soloOperador = false, bloquearRestringido = false }) {
+  const { autenticado, cargando, esAdmin, puedeOperar, esRestringido, errorPerfil, cerrarSesion } = useAuth()
   const location = useLocation()
 
   if (cargando) return <Cargando mensaje="Verificando sesión…" />
@@ -52,6 +52,11 @@ export function RutaProtegida({ children, soloAdmin = false, soloOperador = fals
 
   // Operación: administrador o supervisor (cobranza, pagos, tesorería).
   if (soloOperador && !puedeOperar) {
+    return <Navigate to={destinoPorDefecto} replace />
+  }
+
+  // Bloqueo explícito para residentes restringidos (unidades y panel).
+  if (bloquearRestringido && esRestringido) {
     return <Navigate to={destinoPorDefecto} replace />
   }
 

@@ -58,27 +58,42 @@ export default function App() {
             <Route path="/perfil" element={<Perfil />} />
             <Route path="/exoneraciones" element={<Exoneraciones />} />
 
-            {/* Residente */}
+            {/* Residente (Cualquiera) */}
             <Route path="/mi-cuenta" element={<MiCuenta />} />
             <Route path="/reportar-pago" element={<ReportarPago />} />
 
-            {/* Administrador */}
-            <Route path="/panel" element={<PanelControl />} />
-            <Route path="/unidad/:id" element={<EstadoUnidad />} />
-            <Route path="/unidades" element={<Unidades />} />
+            {/* Acceso a Unidades y Panel: Bloqueado a Residentes Restringidos */}
+            <Route 
+              path="/panel" 
+              element={
+                <RutaProtegida bloquearRestringido>
+                  <PanelControl />
+                </RutaProtegida>
+              } 
+            />
+            <Route 
+              path="/unidad/:id" 
+              element={
+                <RutaProtegida bloquearRestringido>
+                  <EstadoUnidad />
+                </RutaProtegida>
+              } 
+            />
+            <Route 
+              path="/unidades" 
+              element={
+                <RutaProtegida bloquearRestringido>
+                  <Unidades />
+                </RutaProtegida>
+              } 
+            />
+
+            {/* Administrador y Supervisor (soloOperador) */}
             <Route
               path="/cobranza"
               element={
                 <RutaProtegida soloOperador>
                   <Cobranza />
-                </RutaProtegida>
-              }
-            />
-            <Route
-              path="/configuracion"
-              element={
-                <RutaProtegida soloAdmin>
-                  <Configuracion />
                 </RutaProtegida>
               }
             />
@@ -91,6 +106,16 @@ export default function App() {
               }
             />
             <Route path="/tesoreria" element={<Tesoreria />} />
+
+            {/* Solo Administrador (soloAdmin) */}
+            <Route
+              path="/configuracion"
+              element={
+                <RutaProtegida soloAdmin>
+                  <Configuracion />
+                </RutaProtegida>
+              }
+            />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
