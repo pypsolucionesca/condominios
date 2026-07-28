@@ -50,7 +50,6 @@ export default function PanelControl() {
     cargar()
   }, [cargar])
 
-  // Recarga al volver a la pestaña y cada cinco minutos
   useEffect(() => {
     const alVolver = () => {
       if (document.visibilityState === 'visible') cargar()
@@ -133,6 +132,26 @@ export default function PanelControl() {
             display: block; 
             margin-top: 2px; 
             line-height: 1.15; 
+          }
+          /* FIX: Cabeceras y paneles en móvil */
+          .card-header-flex {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+          }
+          .card-header-flex h2 { margin: 0 !important; }
+          .card-header-flex .btn, .card-header-flex .btn-auto {
+            width: 100% !important;
+            margin: 0 !important;
+            text-align: center;
+          }
+          .panel-acciones {
+            flex-direction: column-reverse !important;
+            gap: 10px !important;
+          }
+          .panel-acciones .btn {
+            width: 100% !important;
+            margin: 0 !important;
           }
         }
       `}</style>

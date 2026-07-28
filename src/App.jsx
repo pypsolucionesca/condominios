@@ -10,6 +10,7 @@ import PanelControl from './pages/PanelControl'
 import EstadoUnidad from './pages/EstadoUnidad'
 import Cobranza from './pages/Cobranza'
 import Configuracion from './pages/Configuracion'
+import Usuarios from './pages/Usuarios'
 import Pagos from './pages/Pagos'
 import Tesoreria from './pages/Tesoreria'
 import ReportarPago from './pages/ReportarPago'
@@ -108,6 +109,14 @@ export default function App() {
             <Route path="/tesoreria" element={<Tesoreria />} />
 
             {/* Solo Administrador (soloAdmin) */}
+            <Route
+              path="/usuarios"
+              element={
+                <RutaProtegida soloAdmin>
+                  <Usuarios />
+                </RutaProtegida>
+              }
+            />
             <Route
               path="/configuracion"
               element={

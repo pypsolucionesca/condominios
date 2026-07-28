@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtUSD, fmtFecha, hoy } from '../lib/formato'
+import { fmtUSD, fmtFecha, hoy, normalizar } from '../lib/formato'
 import { Panel, MenuAcciones, Aviso, Vacio, Cargador, Indicador } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 
@@ -53,6 +53,7 @@ export default function Exoneraciones() {
   const [enviando, setEnviando] = useState(false)
   const [panel, setPanel] = useState(null)
   const [pestana, setPestana] = useState('exoneraciones')
+  const [busqueda, setBusqueda] = useState('')
 
   const [formE, setFormE] = useState(FORM_EXONERACION)
   const [formC, setFormC] = useState(FORM_CONDONACION)
@@ -84,7 +85,6 @@ export default function Exoneraciones() {
     cargar()
   }, [cargar])
 
-  // Avisos pendientes al elegir unidad para condonar
   useEffect(() => {
     if (!formC.unit_id) {
       setPendientes([])
@@ -97,6 +97,30 @@ export default function Exoneraciones() {
         setFormC((f) => ({ ...f, invoice_ids: (data || []).map((i) => i.id) }))
       })
   }, [formC.unit_id])
+
+  const exoneracionesVisibles = useMemo(() => {
+    const arr = datos?.exoneraciones || []
+    const q = normalizar(busqueda)
+    if (!q) return arr
+    return arr.filter(e => 
+      normalizar(e.unidad).includes(q) || 
+      normalizar(etiquetaMotivo(e.motivo)).includes(q) ||
+      normalizar(e.descripcion).includes(q) ||
+      normalizar(e.autorizado_por).includes(q)
+    )
+  }, [datos, busqueda])
+
+  const condonacionesVisibles = useMemo(() => {
+    const arr = datos?.condonaciones || []
+    const q = normalizar(busqueda)
+    if (!q) return arr
+    return arr.filter(c => 
+      normalizar(c.unidad).includes(q) || 
+      normalizar(etiquetaMotivo(c.motivo)).includes(q) ||
+      normalizar(c.descripcion).includes(q) ||
+      normalizar(c.autorizado_por).includes(q)
+    )
+  }, [datos, busqueda])
 
   const subirDocumento = async () => {
     if (!documento) return null
@@ -311,29 +335,38 @@ export default function Exoneraciones() {
       <div className="pestanas">
         <button
           className={`pestana ${pestana === 'exoneraciones' ? 'activa' : ''}`}
-          onClick={() => setPestana('exoneraciones')}
+          onClick={() => { setPestana('exoneraciones'); setBusqueda(''); }}
         >
           Exoneración de cuota ({exoneraciones.length})
         </button>
         <button
           className={`pestana ${pestana === 'condonaciones' ? 'activa' : ''}`}
-          onClick={() => setPestana('condonaciones')}
+          onClick={() => { setPestana('condonaciones'); setBusqueda(''); }}
         >
           Meses exonerados ({condonaciones.length})
         </button>
       </div>
+      
+      <div className="barra-filtros">
+        <input
+          className="form-control"
+          placeholder="Buscar por unidad, motivo, descripción o autorizador…"
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+        />
+      </div>
 
       {pestana === 'exoneraciones' && (
         <div className="card">
-          {exoneraciones.length === 0 ? (
+          {exoneracionesVisibles.length === 0 ? (
             <Vacio
               icono="🤲"
               titulo="Sin exoneraciones"
-              mensaje="Una exoneración libera a una unidad de pagar la cuota, total o parcialmente, de forma permanente."
+              mensaje={busqueda ? "No hay coincidencias para su búsqueda." : "Una exoneración libera a una unidad de pagar la cuota, total o parcialmente, de forma permanente."}
             />
           ) : (
             <ul className="list-group">
-              {exoneraciones.map((e) => (
+              {exoneracionesVisibles.map((e) => (
                 <li key={e.id} className={`list-item ${!e.activa ? 'inactiva' : ''}`}>
                   <div>
                     <div className="unidad-titulo">
@@ -397,15 +430,15 @@ export default function Exoneraciones() {
 
       {pestana === 'condonaciones' && (
         <div className="card">
-          {condonaciones.length === 0 ? (
+          {condonacionesVisibles.length === 0 ? (
             <Vacio
               icono="🤝"
               titulo="Sin meses exonerados"
-              mensaje="Exonerar meses perdona avisos vencidos concretos que ya existen, sin afectar las cuotas futuras. La unidad sigue pagando normalmente los meses siguientes."
+              mensaje={busqueda ? "No hay coincidencias para su búsqueda." : "Exonerar meses perdona avisos vencidos concretos que ya existen, sin afectar las cuotas futuras."}
             />
           ) : (
             <ul className="list-group">
-              {condonaciones.map((c) => (
+              {condonacionesVisibles.map((c) => (
                 <li key={c.id} className="list-item">
                   <div>
                     <div className="unidad-titulo">
@@ -440,7 +473,7 @@ export default function Exoneraciones() {
         </div>
       )}
 
-      {/* ------------------------------------------------ nueva exoneración */}
+      {/* Modales de formulario */}
       <Panel
         abierto={panel === 'exonerar'}
         titulo="Nueva exoneración"
@@ -595,7 +628,6 @@ export default function Exoneraciones() {
         </form>
       </Panel>
 
-      {/* -------------------------------------------------- condonar deuda */}
       <Panel
         abierto={panel === 'condonar'}
         titulo="Exonerar meses vencidos"
@@ -764,7 +796,7 @@ export default function Exoneraciones() {
         </form>
       </Panel>
 
-      {/* ------------------------------------------------------- revocar */}
+      {/* Revocar Modal */}
       {revocando && (
         <div className="panel-fondo" onClick={() => setRevocando(null)}>
           <div className="dialogo" onClick={(e) => e.stopPropagation()} role="alertdialog">
@@ -802,7 +834,6 @@ export default function Exoneraciones() {
   )
 }
 
-/** Adjuntar el respaldo documental con control de visibilidad. */
 function DocumentoAdjunto({ archivo, onArchivo, publico, onPublico }) {
   return (
     <>

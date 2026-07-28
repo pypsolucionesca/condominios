@@ -38,129 +38,157 @@ export function Panel({ abierto, titulo, onCerrar, children, ancho = 480 }) {
 }
 
 /**
- * Menú contextual de acciones por fila.
- *
- * En escritorio se abre junto al botón, eligiendo el lado con espacio
- * disponible. En móvil se convierte en hoja inferior: un menú flotante
- * pequeño se sale de la pantalla o queda cortado por los bordes.
+ * Menú de acciones híbrido (Cero Soporte).
+ * En escritorio muestra los botones directamente en línea.
+ * En móvil muestra un botón "Gestionar ▾" que despliega la hoja inferior.
  */
 export function MenuAcciones({ acciones }) {
   const [abierto, setAbierto] = useState(false)
-  const [coords, setCoords] = useState(null)
-  const ref = useRef(null)
-  const botonRef = useRef(null)
+  const [esMovil, setEsMovil] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  )
 
-  const esMovil = typeof window !== 'undefined' && window.innerWidth <= 768
-
+  // Escuchar cambios de tamaño de pantalla
   useEffect(() => {
-    if (!abierto) return
+    const alRedimensionar = () => setEsMovil(window.innerWidth <= 768)
+    window.addEventListener('resize', alRedimensionar)
+    return () => window.removeEventListener('resize', alRedimensionar)
+  }, [])
 
-    const fuera = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setAbierto(false)
-    }
+  // Controlar el cierre de la hoja inferior en móvil
+  useEffect(() => {
+    if (!abierto || !esMovil) return
     const esc = (e) => e.key === 'Escape' && setAbierto(false)
-    // Si la página se desplaza o cambia de tamaño con el menú abierto, se
-    // cierra: sus coordenadas fijas dejarían de coincidir con el botón.
-    const cerrarPorMovimiento = () => setAbierto(false)
-
-    // Se escucha 'click' (no 'mousedown') para cerrar al tocar fuera: así
-    // el mismo gesto que abre el menú no lo cierra de inmediato.
-    document.addEventListener('click', fuera)
     document.addEventListener('keydown', esc)
-    if (!esMovil) {
-      window.addEventListener('scroll', cerrarPorMovimiento, true)
-      window.addEventListener('resize', cerrarPorMovimiento)
-    }
-
-    if (esMovil) document.body.style.overflow = 'hidden'
-
+    document.body.style.overflow = 'hidden'
     return () => {
-      document.removeEventListener('click', fuera)
       document.removeEventListener('keydown', esc)
-      window.removeEventListener('scroll', cerrarPorMovimiento, true)
-      window.removeEventListener('resize', cerrarPorMovimiento)
       document.body.style.overflow = ''
     }
   }, [abierto, esMovil])
 
-  const alternar = (e) => {
-    e.stopPropagation()
-
-    // En escritorio el menú se posiciona con coordenadas FIJAS respecto a
-    // la ventana, calculadas desde el botón. Así escapa de cualquier
-    // contenedor con overflow (como la tabla con scroll horizontal), que
-    // de otro modo recortaría el menú y lo dejaría "pisado".
-    if (!abierto && botonRef.current && !esMovil) {
-      const caja = botonRef.current.getBoundingClientRect()
-      const anchoMenu = 200
-      const espacioDerecha = window.innerWidth - caja.right
-      // Si no hay espacio a la derecha, se alinea el borde derecho del menú
-      // con el borde derecho del botón (crece hacia la izquierda).
-      const izquierda =
-        espacioDerecha < anchoMenu ? caja.right - anchoMenu : caja.left
-      setCoords({
-        top: caja.bottom + 6,
-        left: Math.max(8, izquierda),
-      })
-    }
-
-    setAbierto((v) => !v)
-  }
-
   const visibles = acciones.filter((a) => !a.oculto)
   if (!visibles.length) return null
 
-  const opciones = visibles.map((a, i) => (
-    <button
-      key={i}
-      className={`menu-opcion ${a.peligro ? 'peligro' : ''}`}
-      onClick={(e) => {
-        e.stopPropagation()
-        setAbierto(false)
-        a.onClick()
-      }}
-      disabled={a.desactivado}
-      title={a.titulo}
-    >
-      {a.icono && <span aria-hidden="true">{a.icono}</span>}
-      {a.texto}
-    </button>
-  ))
-
   return (
-    <div className="menu-acciones" ref={ref}>
-      <button
-        ref={botonRef}
-        className="menu-disparador"
-        onClick={alternar}
-        onMouseDown={(e) => e.stopPropagation()}
-        aria-label="Acciones"
-        aria-expanded={abierto}
-      >
-        ⋯
-      </button>
-
-      {abierto && esMovil && (
-        <div className="hoja-fondo" onClick={() => setAbierto(false)}>
-          <div className="hoja-inferior" onClick={(e) => e.stopPropagation()}>
-            <div className="hoja-asa" />
-            {opciones}
-            <button className="menu-opcion cancelar" onClick={() => setAbierto(false)}>
-              Cancelar
+    <>
+      <style>{`
+        .acciones-hibridas { 
+          display: flex; 
+          gap: 6px; 
+          justify-content: flex-end; 
+          align-items: center; 
+        }
+        .btn-accion-linea { 
+          padding: 4px 8px; 
+          font-size: 0.8rem; 
+          border-radius: 4px; 
+          border: 1px solid #d1d5db; 
+          background: #fff; 
+          cursor: pointer; 
+          display: inline-flex; 
+          align-items: center; 
+          gap: 4px; 
+          color: #374151; 
+          white-space: nowrap; 
+          transition: all 0.2s; 
+        }
+        .btn-accion-linea:hover { 
+          background: #f3f4f6; 
+          border-color: #9ca3af; 
+        }
+        .btn-accion-linea.peligro { 
+          color: #dc2626; 
+          border-color: #fca5a5; 
+        }
+        .btn-accion-linea.peligro:hover { 
+          background: #fef2f2; 
+          border-color: #ef4444; 
+        }
+        .btn-accion-movil { 
+          padding: 6px 12px; 
+          font-size: 0.85rem; 
+          border-radius: 6px; 
+          border: 1px solid #d1d5db; 
+          background: #fff; 
+          font-weight: 500; 
+          cursor: pointer; 
+          color: #111827; 
+          box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .btn-accion-movil:active {
+          background: #f3f4f6;
+        }
+        
+        @media (min-width: 769px) {
+          .acciones-movil-trigger { display: none; }
+        }
+        @media (max-width: 768px) {
+          .acciones-escritorio { display: none !important; }
+          .acciones-movil-trigger { display: inline-block; }
+        }
+      `}</style>
+      
+      <div className="acciones-hibridas" onClick={(e) => e.stopPropagation()}>
+        {/* VISTA ESCRITORIO: Botones en línea directamente visibles */}
+        <div className="acciones-escritorio" style={{ display: 'flex', gap: '6px' }}>
+          {visibles.map((a, i) => (
+            <button
+              key={i}
+              className={`btn-accion-linea ${a.peligro ? 'peligro' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                a.onClick()
+              }}
+              disabled={a.desactivado}
+              title={a.titulo || a.texto}
+            >
+              {a.icono && <span aria-hidden="true">{a.icono}</span>}
+              {a.texto}
             </button>
-          </div>
+          ))}
         </div>
-      )}
 
-      {abierto && !esMovil && coords && (
-        <div
-          className="menu-lista menu-flotante"
-          style={{ position: 'fixed', top: coords.top, left: coords.left }}
-        >
-          {opciones}
+        {/* VISTA MÓVIL: Botón "Gestionar" y hoja inferior original */}
+        <div className="acciones-movil-trigger">
+          <button 
+            className="btn-accion-movil"
+            onClick={(e) => {
+              e.stopPropagation()
+              setAbierto(true)
+            }}
+          >
+            Gestionar ▾
+          </button>
+
+          {abierto && esMovil && (
+            <div className="hoja-fondo" onClick={() => setAbierto(false)}>
+              <div className="hoja-inferior" onClick={(e) => e.stopPropagation()}>
+                <div className="hoja-asa" />
+                {visibles.map((a, i) => (
+                  <button
+                    key={i}
+                    className={`menu-opcion ${a.peligro ? 'peligro' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setAbierto(false)
+                      a.onClick()
+                    }}
+                    disabled={a.desactivado}
+                  >
+                    {a.icono && <span aria-hidden="true">{a.icono}</span>}
+                    {a.texto}
+                  </button>
+                ))}
+                <button className="menu-opcion cancelar" onClick={() => setAbierto(false)}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   )
 }
 

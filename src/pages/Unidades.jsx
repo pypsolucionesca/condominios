@@ -82,7 +82,6 @@ export default function Unidades() {
             'id, relation, is_primary, unit_id, profiles:user_id (id, full_name, national_id, phone, avatar_url, is_active)'
           ),
         supabase.from('units_with_balance').select('id, balance_usd'),
-        // Estado de activación (si el usuario ya creó su clave e ingresó).
         supabase.rpc('usuarios_activacion'),
       ])
 
@@ -117,7 +116,6 @@ export default function Unidades() {
     return unidades.filter((u) => {
       if (filtroTipo && u.unit_type !== filtroTipo) return false
 
-      // Filtro rápido por situación, útil cuando hay muchas unidades.
       if (filtroEstado) {
         const saldo = saldos[u.id] || 0
         const tieneResidente = miembros.some((m) => m.unit_id === u.id)
@@ -142,8 +140,6 @@ export default function Unidades() {
   const sumaAlicuotas = activas.reduce((s, u) => s + Number(u.aliquot || 0), 0)
   const areaTotal = activas.reduce((s, u) => s + Number(u.area_m2 || 0), 0)
   const sinArea = activas.filter((u) => !u.area_m2 || Number(u.area_m2) <= 0).length
-
-  // ------------------------------------------------------------------ acciones
 
   const abrirNueva = () => {
     setEditando(null)
@@ -193,8 +189,6 @@ export default function Unidades() {
         location_name: formUnidad.location_name.trim() || null,
         floor: formUnidad.floor.trim() || null,
         area_m2: area,
-        // Cuota fija propia de la unidad. Si se deja vacía, la unidad toma
-        // la cuota general del condominio (lo resuelve unit_effective_fee).
         fixed_fee: formUnidad.fixed_fee === '' ? null : Number(formUnidad.fixed_fee),
         notes: formUnidad.notes.trim() || null,
         business_name: esLocal ? formUnidad.business_name.trim() || null : null,
@@ -271,9 +265,7 @@ export default function Unidades() {
         try {
           const cuerpo = await resp.error.context?.json?.()
           if (cuerpo?.error) detalle = cuerpo.error
-        } catch {
-          /* el cuerpo no era JSON */
-        }
+        } catch {}
         throw new Error(detalle)
       }
       if (resp.data?.error) throw new Error(resp.data.error)
@@ -306,9 +298,6 @@ export default function Unidades() {
     })
   }
 
-  // Vincula el PROPIO perfil del usuario a la unidad como propietario.
-  // No cambia el rol: un admin o supervisor sigue siéndolo, pero además
-  // queda asociado a su unidad, con lo que verá su "Mi cuenta".
   const vincularme = async (unidad) => {
     setError(null)
     try {
@@ -407,12 +396,23 @@ export default function Unidades() {
     })
   }
 
-  // ------------------------------------------------------------------ vista
-
   if (cargando) return <Cargador texto="Cargando unidades…" />
 
   return (
     <>
+      <style>{`
+        /* Protección para que los botones híbridos no rompan la tarjeta de unidad */
+        .unidad-derecha {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 12px;
+        }
+        .unidad-derecha .acciones-hibridas {
+          flex-wrap: wrap; /* Permite que los botones bajen si no hay espacio horizontal */
+        }
+      `}</style>
+
       <div className="pagina-cabecera">
         <div>
           <h1>Apartamentos y Locales</h1>
@@ -530,7 +530,6 @@ export default function Unidades() {
             const gente = miembros.filter((m) => m.unit_id === u.id)
             const saldo = saldos[u.id] || 0
             
-            // Separamos el nombre corto en dos partes usando el "·" como delimitador.
             const partesNombre = nombreUnidadCorto(u).split(' · ')
             const tituloPrincipal = partesNombre[0]
             const tituloSecundario = partesNombre.slice(1).join(' · ')
@@ -640,7 +639,7 @@ export default function Unidades() {
                         { icono: '✏️', texto: 'Editar', onClick: () => abrirEditar(u) },
                         {
                           icono: '👤',
-                          texto: 'Invitar residente',
+                          texto: 'Invitar',
                           onClick: () => abrirInvitar(u),
                           desactivado: !u.is_active,
                         },
@@ -655,7 +654,7 @@ export default function Unidades() {
                           texto: 'Eliminar',
                           onClick: () => eliminar(u),
                           peligro: true,
-                          titulo: 'Solo si no tiene historial financiero',
+                          titulo: 'Solo si no tiene historial',
                         },
                       ]}
                     />
@@ -667,7 +666,7 @@ export default function Unidades() {
         </div>
       )}
 
-      {/* ---------------------------------------------- formulario de unidad */}
+      {/* Modales Inyectados */}
       <Panel
         abierto={panelUnidad}
         titulo={editando ? `Editar ${editando.code}` : 'Nueva unidad'}
@@ -842,7 +841,6 @@ export default function Unidades() {
         </form>
       </Panel>
 
-      {/* ------------------------------------------------- detalle de unidad */}
       <Panel
         abierto={!!detalleUnidad}
         titulo={detalleUnidad ? nombreUnidadCorto(detalleUnidad.unidad) : ''}
@@ -986,9 +984,6 @@ export default function Unidades() {
                 >
                   Editar unidad
                 </button>
-                {/* Vincularme: solo si mi propio perfil NO es ya responsable
-                    de esta unidad. Permite al admin/supervisor asociarse a su
-                    apartamento y ver "Mi cuenta" sin cambiar de rol. */}
                 {!detalleUnidad.gente.some((m) => m.profiles?.id === perfil?.id) && (
                   <button
                     type="button"
@@ -1016,7 +1011,6 @@ export default function Unidades() {
         )}
       </Panel>
 
-      {/* ------------------------------------------------- invitar residente */}
       <Panel
         abierto={panelInvitar}
         titulo={`Invitar a ${unidadDestino?.code || ''}`}

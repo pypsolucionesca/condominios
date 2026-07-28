@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO } from '../lib/formato'
+import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO, normalizar } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import { DetalleGasto } from '../components/Detalles'
@@ -28,6 +28,7 @@ export default function Tesoreria() {
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [busqueda, setBusqueda] = useState('')
 
   const [panel, setPanel] = useState(null)
   const [editando, setEditando] = useState(null)
@@ -177,6 +178,33 @@ export default function Tesoreria() {
   useEffect(() => {
     cargar()
   }, [cargar])
+
+  // ------------------------------------------------------------- filtros
+  
+  const gastosVisibles = useMemo(() => {
+    const q = normalizar(busqueda)
+    if (!q) return gastos
+    return gastos.filter((g) =>
+      normalizar(g.description).includes(q) ||
+      normalizar(g.payees?.full_name).includes(q) ||
+      normalizar(g.supplier).includes(q) ||
+      normalizar(g.expense_categories?.name).includes(q)
+    )
+  }, [gastos, busqueda])
+
+  const personalVisible = useMemo(() => {
+    const q = normalizar(busqueda)
+    const base = personal.filter((p) =>
+      pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado'
+    )
+    if (!q) return base
+    return base.filter((p) =>
+      normalizar(p.full_name).includes(q) ||
+      normalizar(p.role_title).includes(q) ||
+      normalizar(p.national_id).includes(q)
+    )
+  }, [personal, pestana, busqueda])
+
 
   const cerrarPanel = () => {
     setPanel(null)
@@ -615,7 +643,6 @@ export default function Tesoreria() {
         rutaRecibo = res.ruta || res.url || null
       }
 
-      // Buscamos automáticamente si existe una categoría llamada "Nómina" o "Personal" para preasignarla
       const catNomina = categorias.find(
         (c) => c.name.toLowerCase().includes('nómina') || c.name.toLowerCase().includes('personal') || c.name.toLowerCase().includes('sueldos')
       )
@@ -626,7 +653,7 @@ export default function Tesoreria() {
         p_amount: montoPago,
         p_currency: pagoEmpleado.currency,
         p_expense_date: pagoEmpleado.payment_date,
-        p_category_id: catNomina ? catNomina.id : null, // Asignación automática preseleccionada
+        p_category_id: catNomina ? catNomina.id : null,
         p_supplier: pagoEmpleado.persona.full_name,
         p_invoice_ref: pagoEmpleado.operacion.trim() || null,
         p_receipt_url: rutaRecibo,
@@ -816,6 +843,49 @@ export default function Tesoreria() {
 
   return (
     <>
+      <style>{`
+        /* Hacemos que las cuentas ocupen 100% en móvil y 2 columnas en PC */
+        .grid-cuentas {
+          display: grid;
+          grid-template-columns: 1fr !important;
+          gap: 16px;
+        }
+        @media (min-width: 768px) {
+          .grid-cuentas {
+            grid-template-columns: 1fr 1fr !important;
+          }
+        }
+        @media (max-width: 768px) {
+          /* FIX: Cabeceras y paneles en móvil */
+          .card-header-flex {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+          }
+          .card-header-flex h2 { margin: 0 !important; }
+          .card-header-flex .btn, .card-header-flex .grupo-botones {
+            width: 100% !important;
+            margin: 0 !important;
+          }
+          .card-header-flex .grupo-botones {
+            display: flex;
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+          .card-header-flex .grupo-botones .btn {
+            width: 100% !important;
+          }
+          .panel-acciones {
+            flex-direction: column-reverse !important;
+            gap: 10px !important;
+          }
+          .panel-acciones .btn {
+            width: 100% !important;
+            margin: 0 !important;
+          }
+        }
+      `}</style>
+
       <div className="pagina-cabecera">
         <div>
           <h1>Tesorería</h1>
@@ -857,7 +927,10 @@ export default function Tesoreria() {
           <button
             key={p.id}
             className={`pestana ${pestana === p.id ? 'activa' : ''}`}
-            onClick={() => setPestana(p.id)}
+            onClick={() => {
+              setPestana(p.id)
+              setBusqueda('') // Limpiamos la búsqueda al cambiar de pestaña
+            }}
           >
             {p.texto}
           </button>
@@ -1008,11 +1081,20 @@ export default function Tesoreria() {
             )}
           </div>
 
-          {gastos.length === 0 ? (
+          <div className="barra-filtros">
+            <input
+              className="form-control"
+              placeholder="Buscar por concepto, beneficiario o categoría…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+
+          {gastosVisibles.length === 0 ? (
             <Vacio
               icono="🧾"
-              titulo="Sin gastos registrados"
-              mensaje="Todos los gastos quedan visibles para los residentes del condominio."
+              titulo={gastos.length === 0 ? "Sin gastos registrados" : "Sin resultados"}
+              mensaje={gastos.length === 0 ? "Todos los gastos quedan visibles para los residentes del condominio." : "Pruebe con otra búsqueda."}
             />
           ) : (
             <div className="tabla-scroll">
@@ -1028,7 +1110,7 @@ export default function Tesoreria() {
                   </tr>
                 </thead>
                 <tbody>
-                  {gastos.map((g) => (
+                  {gastosVisibles.map((g) => (
                     <tr
                       key={g.id}
                       className="fila-clicable"
@@ -1100,25 +1182,28 @@ export default function Tesoreria() {
             )}
           </div>
 
-          {personal.filter((p) =>
-            pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado'
-          ).length === 0 ? (
+          <div className="barra-filtros">
+            <input
+              className="form-control"
+              placeholder={`Buscar ${pestana === 'personal' ? 'empleado' : 'proveedor'} por nombre o cargo…`}
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+
+          {personalVisible.length === 0 ? (
             <Vacio
               icono={pestana === 'personal' ? '👷' : '🏪'}
-              titulo={pestana === 'personal' ? 'Sin personal' : 'Sin proveedores'}
+              titulo={personal.filter((p) => pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado').length === 0 ? (pestana === 'personal' ? 'Sin personal' : 'Sin proveedores') : 'Sin resultados'}
               mensaje={
-                pestana === 'personal'
-                  ? 'Registre al personal de mantenimiento, vigilancia y limpieza.'
-                  : 'Registre a los proveedores habituales del condominio.'
+                personal.filter((p) => pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado').length === 0
+                  ? (pestana === 'personal' ? 'Registre al personal de mantenimiento, vigilancia y limpieza.' : 'Registre a los proveedores habituales del condominio.')
+                  : 'Pruebe con otra búsqueda.'
               }
             />
           ) : (
             <ul className="list-group">
-              {personal
-                .filter((p) =>
-                  pestana === 'personal' ? p.kind === 'empleado' : p.kind !== 'empleado'
-                )
-                .map((p) => (
+              {personalVisible.map((p) => (
                 <li
                   key={p.id}
                   className="list-item list-item-clicable"

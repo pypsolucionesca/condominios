@@ -322,6 +322,30 @@ export default function Cobranza() {
             margin-top: 2px; 
             line-height: 1.15; 
           }
+          /* FIX: Botones y paneles en móvil */
+          .pagina-cabecera {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+          }
+          .pagina-cabecera .grupo-botones {
+            width: 100% !important;
+            display: flex;
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+          .pagina-cabecera .grupo-botones .btn {
+            width: 100% !important;
+            margin: 0 !important;
+          }
+          .panel-acciones {
+            flex-direction: column-reverse !important;
+            gap: 10px !important;
+          }
+          .panel-acciones .btn {
+            width: 100% !important;
+            margin: 0 !important;
+          }
         }
       `}</style>
 
@@ -774,7 +798,7 @@ export default function Cobranza() {
       <DetalleAviso
         invoiceId={avisoDetalle}
         abierto={Boolean(avisoDetalle)}
-        onCerrar={() => setAvvisoDetalle ? setAvisoDetalle(null) : setAvisoDetalle(null)}
+        onCerrar={() => setAvisoDetalle(null)}
         onCambio={cargar}
       />
 

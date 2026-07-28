@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { urlComprobante } from '../lib/imagenes'
-import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy } from '../lib/formato'
+import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy, normalizar } from '../lib/formato'
 import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador } from '../components/UI'
 import FormularioPago from '../components/FormularioPago'
 import { DetallePago } from '../components/Detalles'
@@ -13,11 +13,12 @@ export default function Pagos() {
   const [pagos, setPagos] = useState([])
   const [cuentas, setCuentas] = useState([])
   const [unidades, setUnidades] = useState([])
+  const [miembros, setMiembros] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
-  const [filtro, setFiltro] = useState('reportado')
+  const [filtro, setFiltro] = useState('') // Arranca por defecto en "Todos"
   const [busqueda, setBusqueda] = useState('')
 
   const [panelConfirmar, setPanelConfirmar] = useState(false)
@@ -31,11 +32,11 @@ export default function Pagos() {
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const [rP, rC, rU] = await Promise.all([
+      const [rP, rC, rU, rM] = await Promise.all([
         supabase
           .from('payments')
           .select(
-            'id, payment_date, currency, amount, exchange_rate, amount_usd, reference, receipt_url, status, rejection_reason, notes, unit_id, account_id, confirmed_at, units:unit_id (code)'
+            'id, payment_date, currency, amount, exchange_rate, amount_usd, reference, receipt_url, status, rejection_reason, notes, unit_id, account_id, confirmed_at, units:unit_id (code, unit_type, business_name)'
           )
           .order('payment_date', { ascending: false })
           .order('created_at', { ascending: false })
@@ -46,14 +47,19 @@ export default function Pagos() {
           .eq('is_active', true)
           .order('name'),
         supabase.from('units').select('id, code').eq('is_active', true).order('code'),
+        supabase
+          .from('unit_members')
+          .select('unit_id, profiles:user_id (full_name)'),
       ])
 
       if (rP.error) throw rP.error
       if (rC.error) throw rC.error
+      if (rM.error) throw rM.error
 
       setPagos(rP.data || [])
       setCuentas(rC.data || [])
       setUnidades(rU.data || [])
+      setMiembros(rM.data || [])
       setError(null)
     } catch (err) {
       setError(mensajeError(err))
@@ -66,17 +72,31 @@ export default function Pagos() {
     cargar()
   }, [cargar])
 
+  // Agrupamos a los responsables por unidad para la vista y la búsqueda
+  const responsablesPorUnidad = useMemo(() => {
+    const mapa = {}
+    for (const m of miembros) {
+      if (!m.profiles?.full_name) continue
+      ;(mapa[m.unit_id] = mapa[m.unit_id] || []).push(m.profiles.full_name)
+    }
+    return mapa
+  }, [miembros])
+
+  // Filtramos usando la función 'normalizar' para ignorar acentos y mayúsculas
   const visibles = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
+    const q = normalizar(busqueda)
     return pagos.filter((p) => {
       if (filtro && p.status !== filtro) return false
       if (!q) return true
+      const responsables = (responsablesPorUnidad[p.unit_id] || []).join(' ')
       return (
-        p.units?.code?.toLowerCase().includes(q) ||
-        p.reference?.toLowerCase().includes(q)
+        normalizar(p.units?.code).includes(q) ||
+        normalizar(p.units?.business_name).includes(q) ||
+        normalizar(responsables).includes(q) ||
+        normalizar(p.reference).includes(q)
       )
     })
-  }, [pagos, filtro, busqueda])
+  }, [pagos, filtro, busqueda, responsablesPorUnidad])
 
   const porConfirmar = pagos.filter((p) => p.status === 'reportado')
   const totalPorConfirmar = porConfirmar.reduce((s, p) => s + Number(p.amount_usd || 0), 0)
@@ -156,6 +176,19 @@ export default function Pagos() {
 
   return (
     <>
+      <style>{`
+        .tabla-pagos .celda-unidad { width: 220px; min-width: 220px; }
+        .tabla-pagos .info-movil { display: none; }
+        @media (max-width: 768px) {
+          .tabla-pagos .celda-unidad { width: 180px; min-width: 180px; }
+          .tabla-pagos .info-movil { 
+            display: block; 
+            margin-top: 2px; 
+            line-height: 1.15; 
+          }
+        }
+      `}</style>
+
       <div className="pagina-cabecera">
         <div>
           <h1>Pagos</h1>
@@ -183,7 +216,7 @@ export default function Pagos() {
       <div className="barra-filtros">
         <input
           className="form-control"
-          placeholder="Buscar por unidad o referencia…"
+          placeholder="Buscar por unidad, comercio, responsable o referencia…"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
@@ -193,10 +226,10 @@ export default function Pagos() {
           value={filtro}
           onChange={(e) => setFiltro(e.target.value)}
         >
+          <option value="">Todos</option>
           <option value="reportado">Por verificar</option>
           <option value="confirmado">Confirmados</option>
           <option value="rechazado">Rechazados</option>
-          <option value="">Todos</option>
         </select>
       </div>
 
@@ -205,23 +238,23 @@ export default function Pagos() {
           <Vacio
             icono="💵"
             titulo={
-              filtro === 'reportado' ? 'No hay pagos por verificar' : 'Sin pagos en este filtro'
+              filtro === 'reportado' ? 'No hay pagos por verificar' : 'Sin pagos'
             }
             mensaje={
               filtro === 'reportado'
                 ? 'Cuando un residente reporte un pago, aparecerá aquí para su confirmación.'
-                : 'Pruebe con otro estado.'
+                : (pagos.length === 0 ? 'Aún no se han registrado pagos en el sistema.' : 'Pruebe con otra búsqueda o filtro.')
             }
           />
         </div>
       ) : (
         <div className="card">
           <div className="tabla-scroll">
-            <table className="tabla">
+            <table className="tabla tabla-pagos">
               <thead>
                 <tr>
                   <th>Fecha</th>
-                  <th>Unidad</th>
+                  <th className="celda-unidad">Unidad</th>
                   <th>Referencia</th>
                   <th className="der">Monto</th>
                   <th>Estado</th>
@@ -229,58 +262,82 @@ export default function Pagos() {
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="fila-clicable"
-                    onClick={() => setPagoDetalle(p.id)}
-                  >
-                    <td>{fmtFecha(p.payment_date)}</td>
-                    <td>
-                      <strong>{p.units?.code || '—'}</strong>
-                    </td>
-                    <td>
-                      {p.reference || '—'}
-                      {p.receipt_url && <small className="bloque">📎 Con comprobante</small>}
-                      {p.status === 'rechazado' && p.rejection_reason && (
-                        <small className="bloque texto-error">{p.rejection_reason}</small>
-                      )}
-                    </td>
-                    <td className="der">
-                      <strong>{fmtUSD(p.amount_usd)}</strong>
-                      {p.currency === 'VES' && (
-                        <small className="bloque">{fmtMoneda(p.amount, 'VES')}</small>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge badge-${p.status}`}>{etiqueta(p.status)}</span>
-                    </td>
-                    <td className="der" onClick={(e) => e.stopPropagation()}>
-                      <MenuAcciones
-                        acciones={[
-                          {
-                            icono: '🔍',
-                            texto: 'Ver detalle',
-                            onClick: () => setPagoDetalle(p.id),
-                          },
-                          {
-                            icono: '✅',
-                            texto: 'Revisar y confirmar',
-                            oculto: p.status !== 'reportado',
-                            onClick: () => abrirConfirmar(p),
-                          },
-                          {
-                            icono: '🚫',
-                            texto: 'Rechazar',
-                            peligro: true,
-                            oculto: p.status !== 'reportado',
-                            onClick: () => rechazar(p),
-                          },
-                        ]}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {visibles.map((p) => {
+                  const esComercial = p.units?.unit_type === 'local_comercial' && p.units?.business_name
+                  const responsablesList = responsablesPorUnidad[p.unit_id] || []
+
+                  return (
+                    <tr
+                      key={p.id}
+                      className="fila-clicable"
+                      onClick={() => setPagoDetalle(p.id)}
+                    >
+                      <td>{fmtFecha(p.payment_date)}</td>
+                      <td className="celda-unidad">
+                        <strong>
+                          {esComercial ? p.units.business_name : (p.units?.code || '—')}
+                        </strong>
+                        <div className="info-movil">
+                          {esComercial && (
+                            <small style={{ display: 'block', color: 'var(--text-main)', fontWeight: 500, marginBottom: '1px' }}>
+                              {p.units.code}
+                            </small>
+                          )}
+                          {responsablesList.length > 0 && (
+                            <small style={{ display: 'block', color: '#6b7280' }}>
+                              {responsablesList.join(', ')}
+                            </small>
+                          )}
+                        </div>
+                        {!esComercial && responsablesList.length > 0 && (
+                          <small className="bloque" style={{ color: 'var(--text-muted)' }}>
+                            {responsablesList.join(', ')}
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        {p.reference || '—'}
+                        {p.receipt_url && <small className="bloque">📎 Con comprobante</small>}
+                        {p.status === 'rechazado' && p.rejection_reason && (
+                          <small className="bloque texto-error">{p.rejection_reason}</small>
+                        )}
+                      </td>
+                      <td className="der">
+                        <strong>{fmtUSD(p.amount_usd)}</strong>
+                        {p.currency === 'VES' && (
+                          <small className="bloque">{fmtMoneda(p.amount, 'VES')}</small>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`badge badge-${p.status}`}>{etiqueta(p.status)}</span>
+                      </td>
+                      <td className="der" onClick={(e) => e.stopPropagation()}>
+                        <MenuAcciones
+                          acciones={[
+                            {
+                              icono: '🔍',
+                              texto: 'Ver detalle',
+                              onClick: () => setPagoDetalle(p.id),
+                            },
+                            {
+                              icono: '✅',
+                              texto: 'Revisar y confirmar',
+                              oculto: p.status !== 'reportado',
+                              onClick: () => abrirConfirmar(p),
+                            },
+                            {
+                              icono: '🚫',
+                              texto: 'Rechazar',
+                              peligro: true,
+                              oculto: p.status !== 'reportado',
+                              onClick: () => rechazar(p),
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

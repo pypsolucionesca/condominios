@@ -10,17 +10,9 @@ export default function Layout() {
   const [menuAbierto, setMenuAbierto] = useState(false)
   const navigate = useNavigate()
 
-  // Navegación según lo que el rol puede hacer:
-  //  - Admin y supervisor OPERAN: ven panel, unidades, cobranza, pagos,
-  //    tesorería. Las opciones de GOBIERNO (exoneraciones, ajustes) quedan
-  //    solo para el admin.
-  //  - Residente completo: ve su cuenta, reportar pago, transparencia y unidades.
-  //  - Residente restringido: solo ve su cuenta y reportar pago.
   let enlaces
   if (puedeOperar) {
     enlaces = []
-    // Si el operador (admin/supervisor) está vinculado a una unidad, su
-    // cuenta personal va PRIMERO, igual que para un residente.
     if (unidades.length > 0) {
       enlaces.push({ to: '/mi-cuenta', icono: '📄', texto: 'Mi cuenta' })
     }
@@ -34,6 +26,7 @@ export default function Layout() {
     // Gobierno: solo el administrador
     if (esAdmin) {
       enlaces.push({ to: '/exoneraciones', icono: '🤲', texto: 'Exoneraciones' })
+      enlaces.push({ to: '/usuarios', icono: '👥', texto: 'Usuarios' })
       enlaces.push({ to: '/configuracion', icono: '⚙️', texto: 'Ajustes' })
     }
   } else {
@@ -42,8 +35,6 @@ export default function Layout() {
       { to: '/reportar-pago', icono: '💵', texto: 'Reportar pago' },
     ]
     
-    // Si el residente NO es restringido (es decir, es de acceso full), 
-    // se le muestran la pestaña de transparencia y unidades.
     if (!esRestringido) {
       enlaces.push(
         { to: '/panel', icono: '📊', texto: 'Transparencia' },
@@ -52,8 +43,6 @@ export default function Layout() {
     }
   }
 
-  // Texto de rol que se muestra bajo el nombre del usuario, para que
-  // siempre quede claro con qué rol está trabajando la persona.
   const descripcionRol = esAdmin
     ? 'Administrador'
     : esSupervisor

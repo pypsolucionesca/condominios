@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtNumero, fmtFecha, fmtHoraLocal, hoy } from '../lib/formato'
-import { Aviso, Cargador, SelectorImagen } from '../components/UI'
+import { Aviso, Cargador, SelectorImagen, Panel } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
-import GestionUsuarios from '../components/GestionUsuarios'
 import { subirLogoCondominio } from '../lib/imagenes'
 
 const ORIGEN = {
@@ -28,6 +27,19 @@ export default function Configuracion() {
   const [logoArchivo, setLogoArchivo] = useState(null)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
+  const [unidadesDirector, setUnidadesDirector] = useState([])
+
+  // Estados para exportar
+  const [panelExportar, setPanelExportar] = useState(false)
+  const [exportando, setExportando] = useState(false)
+  const [errorExportar, setErrorExportar] = useState(null)
+  const [formExportar, setFormExportar] = useState({
+    modulo: 'todos',
+    desde: '',
+    hasta: hoy(),
+    unidad: '',
+    estado: 'todos'
+  })
 
   useEffect(() => {
     if (!condominio) return
@@ -47,8 +59,8 @@ export default function Configuracion() {
     })
   }, [condominio])
 
-  const cargarTasa = async () => {
-    const [rT, rS] = await Promise.all([
+  const cargarGlobales = useCallback(async () => {
+    const [rT, rS, rU] = await Promise.all([
       supabase
         .from('exchange_rates')
         .select('rate_date, rate_bcv, source, status')
@@ -56,14 +68,16 @@ export default function Configuracion() {
         .limit(1)
         .maybeSingle(),
       supabase.rpc('rate_health'),
+      supabase.from('units').select('id, code').order('code')
     ])
     setTasaActual(rT.data)
     setSalud(rS.data)
-  }
+    setUnidadesDirector(rU.data || [])
+  }, [])
 
   useEffect(() => {
-    cargarTasa()
-  }, [])
+    cargarGlobales()
+  }, [cargarGlobales])
 
   const actualizarDesdeBCV = async () => {
     setActualizando(true)
@@ -81,14 +95,13 @@ export default function Configuracion() {
             detalle = cuerpo.mensaje || cuerpo.error
           }
         } catch {
-          /* el cuerpo no era JSON */
         }
         throw new Error(detalle)
       }
       if (resp.data?.error) throw new Error(resp.data.mensaje || resp.data.error)
 
       setAviso(`Tasa actualizada: ${resp.data.mensaje}`)
-      cargarTasa()
+      cargarGlobales()
     } catch (err) {
       setError(mensajeError(err))
     } finally {
@@ -110,10 +123,6 @@ export default function Configuracion() {
 
     setGuardando(true)
     try {
-      // Si se eligió un logo nuevo, se sube primero y se guarda su URL.
-      // Este logo es el que aparece en los reportes/recibos (distinto del
-      // logo de la marca de la app). Así cada condominio personaliza sus
-      // documentos.
       let logoUrl = condominio?.logo_url || null
       if (logoArchivo) {
         const res = await subirLogoCondominio(logoArchivo, perfil.condominium_id)
@@ -178,6 +187,100 @@ export default function Configuracion() {
     }
   }
 
+  const exportarExcel = async (e) => {
+    e.preventDefault()
+    setErrorExportar(null)
+    setExportando(true)
+
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      let queryPagos = supabase.from('payments').select('payment_date, amount, currency, amount_usd, reference, status, units(code)')
+      let queryAvisos = supabase.from('invoices').select('invoice_number, issue_date, due_date, subtotal, status, notes, billing_periods(period), units(code)')
+      let queryGastos = supabase.from('expenses').select('expense_date, description, amount, currency, amount_usd, supplier, expense_categories(name)')
+
+      if (formExportar.desde) {
+        queryPagos = queryPagos.gte('payment_date', formExportar.desde)
+        queryAvisos = queryAvisos.gte('issue_date', formExportar.desde)
+        queryGastos = queryGastos.gte('expense_date', formExportar.desde)
+      }
+      if (formExportar.hasta) {
+        queryPagos = queryPagos.lte('payment_date', formExportar.hasta)
+        queryAvisos = queryAvisos.lte('issue_date', formExportar.hasta)
+        queryGastos = queryGastos.lte('expense_date', formExportar.hasta)
+      }
+      if (formExportar.unidad) {
+        queryPagos = queryPagos.eq('unit_id', formExportar.unidad)
+        queryAvisos = queryAvisos.eq('unit_id', formExportar.unidad)
+      }
+
+      if (formExportar.estado === 'procesados') {
+        queryPagos = queryPagos.eq('status', 'confirmado')
+        queryAvisos = queryAvisos.eq('status', 'pagado')
+      } else if (formExportar.estado === 'pendientes') {
+        queryPagos = queryPagos.eq('status', 'reportado')
+        queryAvisos = queryAvisos.in('status', ['emitido', 'parcial'])
+      }
+
+      if (['todos', 'pagos'].includes(formExportar.modulo)) {
+        const { data, error } = await queryPagos
+        if (error) throw error
+        const filas = data.map(p => ({
+          'Fecha': p.payment_date,
+          'Unidad': p.units?.code || '',
+          'Referencia': p.reference || '',
+          'Moneda': p.currency,
+          'Monto Original': p.amount,
+          'Monto (USD)': p.amount_usd,
+          'Estado': p.status.toUpperCase()
+        }))
+        const ws = XLSX.utils.json_to_sheet(filas.length ? filas : [{ Mensaje: "Sin datos registrados en este rango" }])
+        XLSX.utils.book_append_sheet(wb, ws, 'Pagos')
+      }
+
+      if (['todos', 'cobranza'].includes(formExportar.modulo)) {
+        const { data, error } = await queryAvisos
+        if (error) throw error
+        const filas = data.map(a => ({
+          'Aviso N°': a.invoice_number,
+          'Emisión': a.issue_date,
+          'Vencimiento': a.due_date,
+          'Unidad': a.units?.code || '',
+          'Concepto': a.billing_periods?.period || a.notes || 'Cargo',
+          'Monto (USD)': a.subtotal,
+          'Estado': a.status.toUpperCase()
+        }))
+        const ws = XLSX.utils.json_to_sheet(filas.length ? filas : [{ Mensaje: "Sin datos registrados en este rango" }])
+        XLSX.utils.book_append_sheet(wb, ws, 'Cobranza')
+      }
+
+      if (['todos', 'gastos'].includes(formExportar.modulo) && !formExportar.unidad) {
+        const { data, error } = await queryGastos
+        if (error) throw error
+        const filas = data.map(g => ({
+          'Fecha': g.expense_date,
+          'Concepto': g.description,
+          'Categoría': g.expense_categories?.name || 'Sin categoría',
+          'Proveedor': g.supplier || '—',
+          'Moneda': g.currency,
+          'Monto Original': g.amount,
+          'Monto (USD)': g.amount_usd
+        }))
+        const ws = XLSX.utils.json_to_sheet(filas.length ? filas : [{ Mensaje: "Sin datos registrados en este rango" }])
+        XLSX.utils.book_append_sheet(wb, ws, 'Gastos')
+      }
+
+      XLSX.writeFile(wb, `Reporte_Condominio_${new Date().toISOString().slice(0,10)}.xlsx`)
+      setAviso('Reporte Excel generado y descargado con éxito.')
+      setPanelExportar(false)
+    } catch (err) {
+      setErrorExportar(mensajeError(err))
+    } finally {
+      setExportando(false)
+    }
+  }
+
   if (!form) return <Cargador texto="Cargando configuración…" />
 
   return (
@@ -191,6 +294,22 @@ export default function Configuracion() {
 
       {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
       {aviso && <Aviso tipo="exito" onCerrar={() => setAviso(null)}>{aviso}</Aviso>}
+
+      {/* ------------------------------------------------------ exportar a excel */}
+      <div className="card">
+        <div className="card-header-flex">
+          <h2>Respaldo y Reportes</h2>
+          <button
+            className="btn btn-secundario btn-accion"
+            onClick={() => setPanelExportar(true)}
+          >
+            Descargar Excel
+          </button>
+        </div>
+        <p className="texto-ayuda">
+          Exporte la información de cobranza, pagos y gastos a Microsoft Excel para procesos contables externos o auditorías.
+        </p>
+      </div>
 
       {/* ------------------------------------------------------ tasa BCV */}
       <div className="card">
@@ -493,7 +612,97 @@ export default function Configuracion() {
         </button>
       </form>
 
-      <GestionUsuarios />
+      {/* Panel para Exportar */}
+      <Panel
+        abierto={panelExportar}
+        titulo="Exportar a Excel"
+        onCerrar={() => setPanelExportar(false)}
+        ancho={500}
+      >
+        <form onSubmit={exportarExcel}>
+          {errorExportar && (
+            <Aviso tipo="error" onCerrar={() => setErrorExportar(null)}>
+              {errorExportar}
+            </Aviso>
+          )}
+
+          <div className="form-group">
+            <label>Módulo a exportar</label>
+            <select
+              className="form-control"
+              value={formExportar.modulo}
+              onChange={(e) => setFormExportar({ ...formExportar, modulo: e.target.value })}
+            >
+              <option value="todos">Todo el sistema</option>
+              <option value="pagos">Solo Pagos (Ingresos)</option>
+              <option value="cobranza">Solo Cobranza (Avisos)</option>
+              <option value="gastos">Solo Gastos (Egresos)</option>
+            </select>
+          </div>
+
+          <div className="grid-form">
+            <div className="form-group">
+              <label>Desde (opcional)</label>
+              <CampoFecha
+                className="form-control"
+                value={formExportar.desde}
+                onChange={(v) => setFormExportar({ ...formExportar, desde: v })}
+              />
+            </div>
+            <div className="form-group">
+              <label>Hasta (opcional)</label>
+              <CampoFecha
+                className="form-control"
+                value={formExportar.hasta}
+                onChange={(v) => setFormExportar({ ...formExportar, hasta: v })}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Unidad (opcional)</label>
+            <select
+              className="form-control"
+              value={formExportar.unidad}
+              onChange={(e) => setFormExportar({ ...formExportar, unidad: e.target.value })}
+              disabled={formExportar.modulo === 'gastos'}
+            >
+              <option value="">Todas las unidades</option>
+              {unidadesDirector.map((u) => (
+                <option key={u.id} value={u.id}>{u.code}</option>
+              ))}
+            </select>
+            {formExportar.modulo === 'gastos' && <small className="texto-ayuda">Los gastos no se asocian a unidades específicas.</small>}
+          </div>
+
+          <div className="form-group">
+            <label>Estado</label>
+            <select
+              className="form-control"
+              value={formExportar.estado}
+              onChange={(e) => setFormExportar({ ...formExportar, estado: e.target.value })}
+              disabled={formExportar.modulo === 'gastos'}
+            >
+              <option value="todos">Todos los registros</option>
+              <option value="procesados">Solo Procesados (Confirmados / Pagados)</option>
+              <option value="pendientes">Solo Pendientes (Reportados / Por cobrar)</option>
+            </select>
+          </div>
+
+          <div className="panel-acciones">
+            <button
+              type="button"
+              className="btn btn-secundario"
+              onClick={() => setPanelExportar(false)}
+            >
+              Cancelar
+            </button>
+            <button className="btn btn-primary" disabled={exportando}>
+              {exportando ? 'Generando archivo…' : 'Descargar Excel'}
+            </button>
+          </div>
+        </form>
+      </Panel>
     </>
   )
 }
