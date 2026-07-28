@@ -409,8 +409,21 @@ export default function Unidades() {
           gap: 12px;
         }
         .unidad-derecha .acciones-hibridas {
-          flex-wrap: wrap; /* Permite que los botones bajen si no hay espacio horizontal */
+          flex-wrap: wrap; 
         }
+
+        /* --- COMPACTACIÓN DE LA FICHA DE LA UNIDAD --- */
+        .detalle-unidad .detalle-seccion { margin-bottom: 12px !important; }
+        .detalle-unidad .subtitulo { margin-bottom: 6px !important; font-size: 0.95rem; }
+        .detalle-lista { display: flex; flex-direction: column; gap: 4px; }
+        .detalle-lista div { display: flex; justify-content: space-between; border-bottom: 1px solid #f3f4f6; padding-bottom: 4px; }
+        .detalle-lista dt { font-weight: 500; color: #6b7280; font-size: 0.85rem; }
+        .detalle-lista dd { font-weight: 600; text-align: right; font-size: 0.85rem; margin: 0; }
+        .responsable-ficha { padding: 6px 0 !important; gap: 8px !important; border-bottom: 1px solid #f3f4f6; }
+        .responsable-avatar { width: 28px !important; height: 28px !important; }
+        .responsable-titulo strong { font-size: 0.85rem; }
+        .responsable-meta span { font-size: 0.75rem; }
+        .detalle-notas { font-size: 0.85rem; margin-top: 6px; }
       `}</style>
 
       <div className="pagina-cabecera">
@@ -961,7 +974,7 @@ export default function Unidades() {
                           )}
                           {m.profiles?.phone && <span>Tel: {m.profiles.phone}</span>}
                           {!m.profiles?.national_id && !m.profiles?.phone && (
-                            <span>Sin datos de contacto adicionales</span>
+                            <span>Sin contacto extra</span>
                           )}
                         </div>
                       </div>

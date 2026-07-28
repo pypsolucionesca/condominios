@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -140,6 +141,27 @@ export default function Login() {
           <br />
           Si no tiene credenciales, solicítelas a la administración.
         </p>
+
+        {/* NUEVO PUENTE AL REGISTRO SaaS */}
+        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e5e7eb', textAlign: 'center' }}>
+          <small style={{ color: '#4b5563', display: 'block', marginBottom: '12px' }}>
+            ¿Desea implementar P&P Admin en su empresa o condominio?
+          </small>
+          <Link 
+            to="/registro" 
+            className="btn btn-secundario" 
+            style={{ 
+              width: '100%', 
+              textDecoration: 'none', 
+              display: 'inline-block', 
+              boxSizing: 'border-box',
+              textAlign: 'center'
+            }}
+          >
+            Registrar nueva empresa
+          </Link>
+        </div>
+
       </div>
     </div>
   )

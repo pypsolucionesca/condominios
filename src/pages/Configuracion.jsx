@@ -16,7 +16,7 @@ const ORIGEN = {
 }
 
 export default function Configuracion() {
-  const { perfil, condominio, recargarPerfil } = useAuth()
+  const { perfil, condominio, recargarPerfil, esAdmin } = useAuth()
 
   const [form, setForm] = useState(null)
   const [tasa, setTasa] = useState({ rate_date: hoy(), rate_bcv: '' })
@@ -40,6 +40,13 @@ export default function Configuracion() {
     unidad: '',
     estado: 'todos'
   })
+
+  // Estados para Reinicio del Sistema (Zona de Peligro)
+  const [panelReset, setPanelReset] = useState(false)
+  const [nivelReset, setNivelReset] = useState('financiero')
+  const [textoConfirmacion, setTextoConfirmacion] = useState('')
+  const [checkResponsabilidad, setCheckResponsabilidad] = useState(false)
+  const [reseteando, setReseteando] = useState(false)
 
   useEffect(() => {
     if (!condominio) return
@@ -281,6 +288,65 @@ export default function Configuracion() {
     }
   }
 
+  // --- FUNCIÓN DE REINICIO DEL SISTEMA ---
+  const ejecutarReinicio = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setReseteando(true)
+
+    try {
+      // 1. Si es Nivel 2 (Reinicio de Fábrica) y el condominio tiene logo, destruirlo del bucket
+      if (nivelReset === 'total' && condominio?.logo_url) {
+        try {
+          const urlParts = condominio.logo_url.split('/storage/v1/object/public/')
+          if (urlParts.length === 2) {
+            const pathCompleto = urlParts[1]
+            const slashIndex = pathCompleto.indexOf('/')
+            const bucket = pathCompleto.substring(0, slashIndex)
+            const filePath = pathCompleto.substring(slashIndex + 1)
+            await supabase.storage.from(bucket).remove([filePath])
+          }
+        } catch (e) {
+          console.warn('Fallo silencioso: No se pudo localizar el archivo físico del logo.', e)
+        }
+      }
+
+      // 2. Ejecutar la limpieza masiva en BD
+      const funcionBase = nivelReset === 'total' ? 'wipe_all_data' : 'wipe_financial_data'
+      const { error: errSql } = await supabase.rpc(funcionBase, { p_condominium_id: perfil.condominium_id })
+      
+      if (errSql) throw errSql
+
+      // 3. Correo de auditoría
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        await supabase.functions.invoke('auditoria-reset', {
+          body: { 
+            condominio: condominio.name, 
+            admin: perfil.full_name,
+            email: session.user.email,
+            nivel: nivelReset,
+            fecha: new Date().toISOString()
+          },
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        })
+      } catch (emailErr) {
+        console.warn('Auditoría falló, pero el reinicio local procedió.', emailErr)
+      }
+
+      setPanelReset(false)
+      setTextoConfirmacion('')
+      setCheckResponsabilidad(false)
+      
+      alert(nivelReset === 'total' ? 'Reinicio de Fábrica completado exitosamente.' : 'Reinicio Financiero completado exitosamente.')
+      window.location.reload()
+
+    } catch (err) {
+      setError(mensajeError(err))
+      setReseteando(false)
+    }
+  }
+
   if (!form) return <Cargador texto="Cargando configuración…" />
 
   return (
@@ -294,22 +360,6 @@ export default function Configuracion() {
 
       {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
       {aviso && <Aviso tipo="exito" onCerrar={() => setAviso(null)}>{aviso}</Aviso>}
-
-      {/* ------------------------------------------------------ exportar a excel */}
-      <div className="card">
-        <div className="card-header-flex">
-          <h2>Respaldo y Reportes</h2>
-          <button
-            className="btn btn-secundario btn-accion"
-            onClick={() => setPanelExportar(true)}
-          >
-            Descargar Excel
-          </button>
-        </div>
-        <p className="texto-ayuda">
-          Exporte la información de cobranza, pagos y gastos a Microsoft Excel para procesos contables externos o auditorías.
-        </p>
-      </div>
 
       {/* ------------------------------------------------------ tasa BCV */}
       <div className="card">
@@ -515,6 +565,24 @@ export default function Configuracion() {
           </div>
         </div>
 
+        {/* ------------------------------------------------------ exportar a excel */}
+        <div className="card">
+          <div className="card-header-flex">
+            <h2>Respaldo y Reportes</h2>
+            {/* Es CLAVE este type="button" para que al hacer clic no se guarde el formulario de arriba */}
+            <button
+              type="button"
+              className="btn btn-secundario btn-accion"
+              onClick={() => setPanelExportar(true)}
+            >
+              Descargar Excel
+            </button>
+          </div>
+          <p className="texto-ayuda">
+            Exporte la información de cobranza, pagos y gastos a Microsoft Excel para procesos contables externos o auditorías.
+          </p>
+        </div>
+
         {/* --------------------------------------------------------- mora */}
         <div className="card">
           <h2 className="card-header">Recargo por mora</h2>
@@ -612,6 +680,31 @@ export default function Configuracion() {
         </button>
       </form>
 
+      {/* ------------------------------------------------- ZONA DE PELIGRO */}
+      {esAdmin && (
+        <div className="card" style={{ marginTop: 40, border: '1px solid #ef4444' }}>
+          <h2 className="card-header" style={{ color: '#ef4444' }}>Zona de Peligro</h2>
+          <p className="texto-ayuda">
+            Opciones avanzadas y destructivas del sistema. Las acciones realizadas aquí son irreversibles.
+          </p>
+          <div style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ backgroundColor: '#ef4444', color: 'white', borderColor: '#ef4444' }}
+              onClick={() => {
+                setNivelReset('financiero')
+                setTextoConfirmacion('')
+                setCheckResponsabilidad(false)
+                setPanelReset(true)
+              }}
+            >
+              Reinicio del Sistema
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Panel para Exportar */}
       <Panel
         abierto={panelExportar}
@@ -699,6 +792,79 @@ export default function Configuracion() {
             </button>
             <button className="btn btn-primary" disabled={exportando}>
               {exportando ? 'Generando archivo…' : 'Descargar Excel'}
+            </button>
+          </div>
+        </form>
+      </Panel>
+
+      {/* Panel para Reinicio del Sistema */}
+      <Panel abierto={panelReset} titulo="Reinicio del Sistema" onCerrar={() => setPanelReset(false)} ancho={550}>
+        <form onSubmit={ejecutarReinicio}>
+          
+          <div className="form-group">
+            <label>Nivel de borrado</label>
+            <select 
+              className="form-control" 
+              value={nivelReset} 
+              onChange={(e) => setNivelReset(e.target.value)}
+              style={{ borderColor: '#ef4444', borderWidth: 2 }}
+            >
+              <option value="financiero">Nivel 1: Borrar solo información financiera (Recibos, pagos, gastos)</option>
+              <option value="total">Nivel 2: Reinicio de Fábrica (Borrar finanzas, unidades y resetear configuración)</option>
+            </select>
+          </div>
+
+          <div className="alerta" style={{ backgroundColor: '#fef2f2', color: '#991b1b', border: '1px solid #f87171' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem' }}>⚠️ Acción irreversible</h4>
+            {nivelReset === 'financiero' ? (
+              <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                Esto eliminará <strong>todos los recibos, pagos, comprobantes y gastos</strong> del historial contable.<br/><br/>
+                Tus apartamentos y perfiles de usuarios quedarán intactos. Ideal para limpiar pruebas y arrancar en producción.
+              </p>
+            ) : (
+              <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                Esto destruirá <strong>toda la información de la base de datos</strong> (Finanzas, apartamentos y relaciones de usuarios), eliminará el logo y devolverá la configuración a sus valores por defecto.<br/><br/>
+                Solo mantendrá tu acceso como administrador principal.
+              </p>
+            )}
+          </div>
+
+          <label className="opcion-bloque" style={{ marginTop: 20 }}>
+            <input
+              type="checkbox"
+              checked={checkResponsabilidad}
+              onChange={(e) => setCheckResponsabilidad(e.target.checked)}
+            />
+            <div>
+              <strong style={{ color: '#b91c1c' }}>Descargo de responsabilidad civil</strong>
+              <small>Entiendo que P&P Soluciones no puede recuperar esta información y asumo la total responsabilidad de la pérdida de los registros actuales.</small>
+            </div>
+          </label>
+
+          <div className="form-group" style={{ marginTop: 20 }}>
+            <label>
+              Para confirmar, escriba el nombre de la empresa: <strong>{condominio?.name}</strong>
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              value={textoConfirmacion}
+              onChange={(e) => setTextoConfirmacion(e.target.value)}
+              placeholder={condominio?.name}
+              disabled={!checkResponsabilidad}
+            />
+          </div>
+
+          <div className="panel-acciones">
+            <button type="button" className="btn btn-secundario" onClick={() => setPanelReset(false)}>
+              Cancelar
+            </button>
+            <button 
+              className="btn" 
+              style={{ backgroundColor: '#ef4444', color: 'white', borderColor: '#ef4444', opacity: (textoConfirmacion !== condominio?.name || !checkResponsabilidad) ? 0.5 : 1 }}
+              disabled={textoConfirmacion !== condominio?.name || !checkResponsabilidad || reseteando}
+            >
+              {reseteando ? 'Eliminando datos...' : 'Confirmar y Reiniciar'}
             </button>
           </div>
         </form>

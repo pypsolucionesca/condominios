@@ -20,7 +20,6 @@ export default function EstadoUnidad() {
   const [error, setError] = useState(null)
   const [busqueda, setBusqueda] = useState('')
 
-  // Modales
   const [avisoDetalle, setAvisoDetalle] = useState(null)
   const [pagoDetalle, setPagoDetalle] = useState(null)
 
@@ -37,7 +36,6 @@ export default function EstadoUnidad() {
         .eq('id', id)
         .maybeSingle(),
       supabase.rpc('unit_statement', { p_unit_id: id }),
-      // Extraemos payment_allocations, notas y períodos para el concepto detallado
       supabase
         .from('invoices')
         .select('id, invoice_number, issue_date, due_date, subtotal, previous_balance, total, status, notes, billing_periods(period), payment_allocations(amount_usd), invoice_items(description)')
@@ -63,18 +61,43 @@ export default function EstadoUnidad() {
         setUnidad(rU.data)
         setMovimientos(rMov.data || [])
         
-        const avisosProcesados = (rAvi.data || []).map(a => {
-          const pagado = a.payment_allocations?.reduce((acc, p) => acc + Number(p.amount_usd), 0) || 0
+        let avisosProcesados = (rAvi.data || []).map(a => {
+          const pagadoDirecto = a.payment_allocations?.reduce((acc, p) => acc + Number(p.amount_usd), 0) || 0
           let estadoReal = a.status
           if (a.status !== 'anulado') {
-            estadoReal = pagado >= a.subtotal ? 'pagado' : (pagado > 0 ? 'parcial' : 'emitido')
+            estadoReal = pagadoDirecto >= a.subtotal ? 'pagado' : (pagadoDirecto > 0 ? 'parcial' : 'emitido')
           }
-          return { ...a, status: estadoReal, pagado }
+          const conceptoPrincipal = a.invoice_items?.[0]?.description || ''
+          return { ...a, status: estadoReal, pagado: pagadoDirecto, conceptoPrincipal }
         })
+
+        // MOTOR DE AUTO-CONCILIACIÓN (CERO SOPORTE)
+        const saldoGlobal = Number(rSaldo.data) || 0
+        const deudaAbiertaVisual = avisosProcesados
+          .filter(a => ['emitido', 'parcial'].includes(a.status))
+          .reduce((acc, a) => acc + (Number(a.subtotal) - Number(a.pagado)), 0)
+          
+        let efectivoFlotante = deudaAbiertaVisual - saldoGlobal
+
+        // Si el admin olvidó amarrar un pago a una factura pero hay dinero flotante en caja, se asigna en cascada automáticamente.
+        if (efectivoFlotante > 0.01) {
+          avisosProcesados.sort((a, b) => new Date(a.issue_date) - new Date(b.issue_date))
+          for (let a of avisosProcesados) {
+            if (!['emitido', 'parcial'].includes(a.status)) continue
+            const falta = Number(a.subtotal) - Number(a.pagado)
+            if (falta > 0 && efectivoFlotante > 0.01) {
+              const aplicable = Math.min(falta, efectivoFlotante)
+              a.pagado = Number(a.pagado) + aplicable
+              efectivoFlotante -= aplicable
+              a.status = a.pagado >= (Number(a.subtotal) - 0.01) ? 'pagado' : 'parcial'
+            }
+          }
+          avisosProcesados.sort((a, b) => new Date(b.issue_date) - new Date(a.issue_date))
+        }
 
         setAvisos(avisosProcesados)
         setPagos(rPag.data || [])
-        setSaldo(Number(rSaldo.data) || 0)
+        setSaldo(saldoGlobal)
       })
       .catch((err) => activo && setError(mensajeError(err)))
       .finally(() => activo && setCargando(false))
@@ -100,7 +123,6 @@ export default function EstadoUnidad() {
     }
   }
 
-  // Filtrado tolerante a errores ortográficos
   const avisosVisibles = useMemo(() => {
     const q = normalizar(busqueda)
     return avisos.filter(a => {
@@ -157,7 +179,7 @@ export default function EstadoUnidad() {
   }
 
   const avisosPendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))
-  const totalPendiente = avisosPendientes.reduce((s, a) => s + Number(a.subtotal || 0), 0)
+  const totalPendiente = avisosPendientes.reduce((s, a) => s + (Number(a.subtotal) - Number(a.pagado)), 0)
   const pagosPorVerificar = pagos.filter((p) => p.status === 'reportado').length
   const avisoMasAntiguo = avisosPendientes.length
     ? avisosPendientes.reduce((min, a) => (a.due_date < min.due_date ? a : min))
@@ -184,7 +206,6 @@ export default function EstadoUnidad() {
         </button>
       </div>
 
-      {/* Resumen destacado */}
       <div className="card">
         <div className={`saldo-destacado ${saldo > 0 ? 'saldo-deuda' : 'saldo-favor'}`}>
           <span className="saldo-etiqueta">
@@ -229,7 +250,6 @@ export default function EstadoUnidad() {
 
       {error && <div className="alerta alerta-error">{error}</div>}
 
-      {/* Avisos de cobro */}
       <div className="card">
         <h2 className="card-header">Avisos de cobro</h2>
         {avisosVisibles.length === 0 ? (
@@ -267,7 +287,6 @@ export default function EstadoUnidad() {
         )}
       </div>
 
-      {/* Pagos */}
       <div className="card">
         <h2 className="card-header">Pagos</h2>
         {pagosVisibles.length === 0 ? (
@@ -313,16 +332,17 @@ export default function EstadoUnidad() {
         )}
       </div>
 
-      {/* Movimientos (estado de cuenta contable) */}
       <div className="card">
-        <div className="card-header-flex">
-          <h2>Estado de cuenta</h2>
+        {/* FIX EN LÍNEA: Flexbox garantizado para que el botón PDF nunca se pise */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '12px' }}>
+          <h2 style={{ margin: 0 }}>Estado de cuenta</h2>
           {movimientos.length > 0 && (
-            <button className="btn btn-secundario btn-auto" onClick={descargarEstado}>
+            <button className="btn btn-secundario btn-auto" onClick={descargarEstado} style={{ margin: 0 }}>
               Descargar PDF
             </button>
           )}
         </div>
+        
         {movimientosVisibles.length === 0 ? (
           <p className="texto-vacio">No hay movimientos registrados que coincidan.</p>
         ) : (
@@ -355,7 +375,6 @@ export default function EstadoUnidad() {
         )}
       </div>
 
-      {/* Modales Inyectados */}
       <DetalleAviso
         invoiceId={avisoDetalle}
         abierto={!!avisoDetalle}

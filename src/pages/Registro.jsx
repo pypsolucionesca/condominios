@@ -1,0 +1,138 @@
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { supabase, mensajeError } from '../lib/supabase'
+import { Aviso } from '../components/UI'
+
+export default function Registro() {
+  const navigate = useNavigate()
+  
+  const [form, setForm] = useState({ condoName: '', adminName: '', email: '', password: '' })
+  const [cargando, setCargando] = useState(false)
+  const [error, setError] = useState(null)
+  const [exito, setExito] = useState(false)
+
+  const registrar = async (e) => {
+    e.preventDefault()
+    setError(null)
+    
+    if (!form.condoName.trim()) return setError('El nombre de la empresa es obligatorio.')
+    if (!form.adminName.trim()) return setError('El nombre del administrador es obligatorio.')
+    if (form.password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres.')
+
+    setCargando(true)
+    try {
+      // Inyectamos el payload oculto (options.data) para activar el Trigger SQL de P&P Admin
+      const { data, error: err } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          data: {
+            condo_name: form.condoName.trim(),
+            admin_name: form.adminName.trim()
+          }
+        }
+      })
+
+      if (err) throw err
+
+      // Si tienes activada la confirmación de correos en Supabase, la sesión vendrá nula
+      if (data?.user && data.session === null) {
+        setExito(true)
+      } else {
+        // Si la confirmación de correo está apagada, entra directo al sistema
+        navigate('/panel')
+      }
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  return (
+    <div className="login-container">
+      <div className="login-box" style={{ maxWidth: 450 }}>
+        <div className="login-logo" style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <span aria-hidden="true" style={{ fontSize: '3rem' }}>🏢</span>
+          <h2 style={{ margin: '10px 0 0 0', color: 'var(--primary-color)' }}>P&P Admin</h2>
+        </div>
+        
+        <h3 style={{ textAlign: 'center', marginBottom: 20, color: 'var(--text-main)' }}>Registrar nueva empresa</h3>
+
+        {exito ? (
+          <div className="alerta alerta-exito" style={{ textAlign: 'center', padding: '20px' }}>
+            <h4 style={{ margin: '0 0 10px 0' }}>¡Plataforma inicializada!</h4>
+            <p style={{ margin: '0 0 10px 0' }}>Hemos construido el entorno seguro para <strong>{form.condoName}</strong>.</p>
+            <p style={{ margin: 0 }}>Por favor, revisa la bandeja de entrada de tu correo electrónico para confirmar la cuenta y empezar a operar.</p>
+            <div style={{ marginTop: 24 }}>
+              <Link to="/login" className="btn btn-secundario" style={{ textDecoration: 'none', display: 'inline-block' }}>
+                Ir al Inicio de Sesión
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={registrar}>
+            {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
+
+            <div className="form-group">
+              <label>Nombre del Edificio o Empresa *</label>
+              <input
+                className="form-control"
+                value={form.condoName}
+                onChange={e => setForm({...form, condoName: e.target.value})}
+                placeholder="Ej. Centro Profesional El Sol"
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Tu nombre (Administrador) *</label>
+              <input
+                className="form-control"
+                value={form.adminName}
+                onChange={e => setForm({...form, adminName: e.target.value})}
+                placeholder="Ej. Juan Pérez"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Correo electrónico de acceso *</label>
+              <input
+                type="email"
+                className="form-control"
+                value={form.email}
+                onChange={e => setForm({...form, email: e.target.value})}
+                placeholder="admin@empresa.com"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Contraseña *</label>
+              <input
+                type="password"
+                className="form-control"
+                value={form.password}
+                onChange={e => setForm({...form, password: e.target.value})}
+                placeholder="Mínimo 6 caracteres"
+              />
+            </div>
+
+            <button 
+              className="btn btn-primary" 
+              style={{ width: '100%', padding: '12px', fontSize: '1.1rem', marginTop: 16 }} 
+              disabled={cargando}
+            >
+              {cargando ? 'Configurando plataforma...' : 'Crear cuenta'}
+            </button>
+
+            <div style={{ textAlign: 'center', marginTop: 24 }}>
+              <small className="texto-ayuda">
+                ¿Ya tienes una cuenta registrada? <Link to="/login" style={{ color: 'var(--primary-color)', fontWeight: 600 }}>Inicia sesión aquí</Link>
+              </small>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}

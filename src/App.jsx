@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { RutaProtegida, RutaPublica, Cargando } from './components/RutaProtegida'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import Registro from './pages/Registro'
 import Restablecer from './pages/Restablecer'
 import MiCuenta from './pages/MiCuenta'
 import Unidades from './pages/Unidades'
@@ -41,6 +42,14 @@ export default function App() {
             element={
               <RutaPublica>
                 <Login />
+              </RutaPublica>
+            }
+          />
+          <Route
+            path="/registro"
+            element={
+              <RutaPublica>
+                <Registro />
               </RutaPublica>
             }
           />

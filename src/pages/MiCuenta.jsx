@@ -42,7 +42,6 @@ export default function MiCuenta() {
 
     Promise.all([
       supabase.rpc('unit_statement', { p_unit_id: unidadSel }),
-      // Traemos invoice_items para mostrar el concepto real en la vista externa
       supabase
         .from('invoices')
         .select('id, invoice_number, issue_date, due_date, subtotal, total, status, notes, billing_periods(period), payment_allocations(amount_usd), invoice_items(description)')
@@ -66,18 +65,41 @@ export default function MiCuenta() {
         
         setMovimientos(rMov.data || [])
         
-        const avisosProcesados = (rAvi.data || []).map(a => {
-          const pagado = a.payment_allocations?.reduce((acc, p) => acc + Number(p.amount_usd), 0) || 0
+        let avisosProcesados = (rAvi.data || []).map(a => {
+          const pagadoDirecto = a.payment_allocations?.reduce((acc, p) => acc + Number(p.amount_usd), 0) || 0
           let estadoReal = a.status
           if (a.status !== 'anulado') {
-            estadoReal = pagado >= a.subtotal ? 'pagado' : (pagado > 0 ? 'parcial' : 'emitido')
+            estadoReal = pagadoDirecto >= a.subtotal ? 'pagado' : (pagadoDirecto > 0 ? 'parcial' : 'emitido')
           }
-          return { ...a, status: estadoReal, pagado }
+          return { ...a, status: estadoReal, pagado: pagadoDirecto }
         })
+
+        // MOTOR DE AUTO-CONCILIACIÓN (CERO SOPORTE)
+        const saldoGlobal = Number(rSaldo.data) || 0
+        const deudaAbiertaVisual = avisosProcesados
+          .filter(a => ['emitido', 'parcial'].includes(a.status))
+          .reduce((acc, a) => acc + (Number(a.subtotal) - Number(a.pagado)), 0)
+          
+        let efectivoFlotante = deudaAbiertaVisual - saldoGlobal
+
+        if (efectivoFlotante > 0.01) {
+          avisosProcesados.sort((a, b) => new Date(a.issue_date) - new Date(b.issue_date))
+          for (let a of avisosProcesados) {
+            if (!['emitido', 'parcial'].includes(a.status)) continue
+            const falta = Number(a.subtotal) - Number(a.pagado)
+            if (falta > 0 && efectivoFlotante > 0.01) {
+              const aplicable = Math.min(falta, efectivoFlotante)
+              a.pagado = Number(a.pagado) + aplicable
+              efectivoFlotante -= aplicable
+              a.status = a.pagado >= (Number(a.subtotal) - 0.01) ? 'pagado' : 'parcial'
+            }
+          }
+          avisosProcesados.sort((a, b) => new Date(b.issue_date) - new Date(a.issue_date))
+        }
         
         setAvisos(avisosProcesados)
         setPagos(rPag.data || [])
-        setSaldo(Number(rSaldo.data) || 0)
+        setSaldo(saldoGlobal)
       })
       .catch((err) => activo && setError(mensajeError(err)))
       .finally(() => activo && setCargando(false))
@@ -106,12 +128,10 @@ export default function MiCuenta() {
     }
   }
 
-  // Filtrado tolerante a errores ortográficos
   const avisosVisibles = useMemo(() => {
     const q = normalizar(busqueda)
     return avisos.filter(a => {
       if (!q) return true
-      
       const conceptosStr = a.invoice_items?.length > 0 
         ? a.invoice_items.map(i => i.description).join(' ')
         : (a.billing_periods?.period ? fmtMesAno(a.billing_periods.period) : a.notes || 'Cargo puntual')
@@ -130,9 +150,9 @@ export default function MiCuenta() {
         const inv = pa.invoices
         if (!inv) return ''
         const conceptosInv = inv.invoice_items?.length > 0 
-          ? inv.invoice_items.map(i => i.description).join(' ')
+          ? inv.invoice_items.map(i => i.description).join(' + ')
           : (inv.billing_periods?.period ? fmtMesAno(inv.billing_periods.period) : inv.notes || 'Cargo')
-        return `${conceptosInv} (Aviso ${inv.invoice_number})`
+        return `${conceptosInv} (Aviso N° ${inv.invoice_number})`
       }).join(' ') || ''
 
       return normalizar(p.reference || '').includes(q) || 
@@ -300,14 +320,16 @@ export default function MiCuenta() {
           </div>
 
           <div className="card">
-            <div className="card-header-flex">
-              <h2>Estado de cuenta</h2>
+            {/* FIX EN LÍNEA: Flexbox garantizado para que el botón PDF nunca se pise */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '12px' }}>
+              <h2 style={{ margin: 0 }}>Estado de cuenta</h2>
               {movimientos.length > 0 && (
-                <button className="btn btn-secundario btn-auto" onClick={descargarEstado}>
+                <button className="btn btn-secundario btn-auto" onClick={descargarEstado} style={{ margin: 0 }}>
                   Descargar PDF
                 </button>
               )}
             </div>
+            
             {movimientosVisibles.length === 0 ? (
               <p className="texto-vacio">No hay movimientos registrados o que coincidan.</p>
             ) : (
