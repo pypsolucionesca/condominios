@@ -199,6 +199,9 @@ export default function MiCuenta() {
     )
   }
 
+  // Filtrar solo las cuentas bancarias para mostrarlas al residente
+  const cuentasBancarias = cuentas.filter((c) => c.kind === 'banco')
+
   return (
     <>
       <div className="card">
@@ -403,23 +406,21 @@ export default function MiCuenta() {
           Utilice los siguientes datos para realizar sus pagos o transferencias. Luego, repórtelos en la sección "Reportar pago".
         </p>
 
-        {cuentas.length === 0 ? (
+        {cuentasBancarias.length === 0 ? (
           <p className="texto-vacio">No hay cuentas bancarias registradas actualmente.</p>
         ) : (
-          cuentas.map(c => (
+          cuentasBancarias.map(c => (
             <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', marginBottom: '16px', backgroundColor: '#fff' }}>
               <h3 style={{ margin: '0 0 12px 0', fontSize: '1.1rem', color: 'var(--primary-color)', display: 'flex', justifyContent: 'space-between' }}>
                 {c.name}
                 <span className="chip">{c.currency}</span>
               </h3>
               
-              {c.kind === 'banco' && (
-                <div style={{ marginBottom: '12px' }}>
-                  <strong style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase' }}>Transferencia</strong>
-                  <div><strong>Banco:</strong> {c.bank_name || '—'}</div>
-                  <div><strong>Cuenta:</strong> {c.account_number || '—'}</div>
-                </div>
-              )}
+              <div style={{ marginBottom: '12px' }}>
+                <strong style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase' }}>Transferencia</strong>
+                <div><strong>Banco:</strong> {c.bank_name || '—'}</div>
+                <div><strong>Cuenta:</strong> {c.account_number || '—'}</div>
+              </div>
 
               {(c.pago_movil_telefono || c.pago_movil_cedula) && (
                 <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
@@ -427,6 +428,23 @@ export default function MiCuenta() {
                   <div><strong>Banco:</strong> {c.bank_name || '—'}</div>
                   <div><strong>Teléfono:</strong> {c.pago_movil_telefono}</div>
                   <div><strong>Cédula / RIF:</strong> {c.pago_movil_cedula}</div>
+                </div>
+              )}
+
+              {c.payment_link && (
+                <div style={{ marginTop: '16px', backgroundColor: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                  <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#166534', textAlign: 'center' }}>
+                    ¿Tienes la app del banco? Solo toca el siguiente link:
+                  </strong>
+                  <a 
+                    href={c.payment_link.startsWith('http') ? c.payment_link : `https://${c.payment_link}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="btn btn-secundario" 
+                    style={{ width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none', backgroundColor: '#22c55e', color: '#ffffff', borderColor: '#16a34a', fontWeight: 'bold' }}
+                  >
+                    🔗 Pagar directo en la App
+                  </a>
                 </div>
               )}
 

@@ -45,6 +45,7 @@ export default function Tesoreria() {
     opening_balance: '',
     pago_movil_telefono: '',
     pago_movil_cedula: '',
+    payment_link: '',
   })
   const [qrArchivo, setQrArchivo] = useState(null)
 
@@ -233,6 +234,7 @@ export default function Tesoreria() {
         account_number: formCuenta.account_number.trim() || null,
         pago_movil_telefono: formCuenta.pago_movil_telefono?.trim() || null,
         pago_movil_cedula: formCuenta.pago_movil_cedula?.trim() || null,
+        payment_link: formCuenta.payment_link?.trim() || null,
       }
 
       let cuentaId = editando?.id
@@ -984,6 +986,7 @@ export default function Tesoreria() {
                       opening_balance: '',
                       pago_movil_telefono: '',
                       pago_movil_cedula: '',
+                      payment_link: '',
                     })
                     setQrArchivo(null)
                     setPanel('cuenta')
@@ -1064,6 +1067,7 @@ export default function Tesoreria() {
                                 opening_balance: c.opening_balance,
                                 pago_movil_telefono: c.pago_movil_telefono || '',
                                 pago_movil_cedula: c.pago_movil_cedula || '',
+                                payment_link: c.payment_link || '',
                               })
                               setQrArchivo(null)
                               setPanel('cuenta')
@@ -1529,6 +1533,17 @@ export default function Tesoreria() {
                     placeholder="J-12345678-9"
                   />
                 </div>
+              </div>
+
+              <div className="form-group" style={{ marginTop: '16px' }}>
+                <label>Enlace de pago directo (Opcional)</label>
+                <input
+                  className="form-control"
+                  value={formCuenta.payment_link}
+                  onChange={(e) => setFormCuenta({ ...formCuenta, payment_link: e.target.value })}
+                  placeholder="Ej: https://pagos.bancodevenezuela.com/..."
+                />
+                <small className="texto-ayuda">Útil para links directos a la app del banco (Ej: BDVApp).</small>
               </div>
 
               <div className="form-group" style={{ marginTop: '16px' }}>
