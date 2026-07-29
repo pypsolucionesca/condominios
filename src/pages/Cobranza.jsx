@@ -36,6 +36,7 @@ export default function Cobranza() {
   const [avisos, setAvisos] = useState([])
   const [unidades, setUnidades] = useState([])
   const [miembros, setMiembros] = useState([])
+  const [saldosGlobales, setSaldosGlobales] = useState({}) // Fuente de verdad absoluta
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
@@ -46,8 +47,15 @@ export default function Cobranza() {
 
   const [panelEmitir, setPanelEmitir] = useState(false)
   const [panelCargo, setPanelCargo] = useState(false)
+  const [panelNotificar, setPanelNotificar] = useState(false)
   const [confirmacion, setConfirmacion] = useState(null)
   const [avisoDetalle, setAvisoDetalle] = useState(null)
+  
+  // Estados para el modal de notificaciones
+  const [seleccionados, setSeleccionados] = useState([])
+  const [filtroTextoModal, setFiltroTextoModal] = useState('')
+  const [filtroTipoModal, setFiltroTipoModal] = useState('')
+  const [filtroTiempoModal, setFiltroTiempoModal] = useState('vencidos')
 
   const [formEmision, setFormEmision] = useState({
     periodo: mesActual(),
@@ -93,9 +101,25 @@ export default function Cobranza() {
       if (rU.error) throw rU.error
       if (rM.error) throw rM.error
 
+      const unidadesData = rU.data || []
+      
+      // EXTRACCIÓN DE SALDOS REALES: Obligamos a consultar el saldo exacto de cada unidad
+      // Esto emula el mismo cálculo que hace MiCuenta.jsx para evitar discrepancias
+      const balancesFetch = await Promise.all(
+        unidadesData.map(u => 
+          supabase.rpc('unit_balance', { p_unit_id: u.id })
+            .then(res => ({ id: u.id, saldo: Number(res.data) || 0 }))
+            .catch(() => ({ id: u.id, saldo: 0 }))
+        )
+      )
+      
+      const mapaSaldos = {}
+      balancesFetch.forEach(b => { mapaSaldos[b.id] = b.saldo })
+
       setAvisos(rA.data || [])
-      setUnidades(rU.data || [])
+      setUnidades(unidadesData)
       setMiembros(rM.data || [])
+      setSaldosGlobales(mapaSaldos)
       setError(null)
     } catch (err) {
       setError(mensajeError(err))
@@ -123,6 +147,14 @@ export default function Cobranza() {
     return mapa
   }, [miembros])
 
+  const tiposUnidad = useMemo(() => {
+    const tipos = [...new Set(unidades.map((u) => u.unit_type))].filter(Boolean)
+    return tipos.map((t) => ({
+      valor: t,
+      etiqueta: t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' '),
+    }))
+  }, [unidades])
+
   const visibles = useMemo(() => {
     const q = normalizar(busqueda)
     return avisos.filter((a) => {
@@ -140,6 +172,101 @@ export default function Cobranza() {
 
   const pendientes = avisos.filter((a) => ['emitido', 'parcial'].includes(a.status))
   const totalPendiente = pendientes.reduce((s, a) => s + Number(a.subtotal || 0), 0)
+
+  // AGRUPACIÓN DE DEUDORES 100% FIABLE
+  const deudores = useMemo(() => {
+    const mapa = {}
+    const fHoy = new Date(hoy() + 'T00:00:00')
+    
+    for (const a of pendientes) {
+      const saldoReal = saldosGlobales[a.unit_id] || 0
+      
+      // FILTRO MAESTRO: Si la unidad tiene saldo a favor o está en cero, se ignora completamente.
+      if (saldoReal <= 0.01) continue
+
+      if (!mapa[a.unit_id]) {
+        mapa[a.unit_id] = {
+          id: a.unit_id,
+          code: a.units?.code || '—',
+          comercio: a.units?.business_name,
+          tipo: a.units?.unit_type,
+          responsables: (responsablesPorUnidad[a.unit_id] || []).join(', '),
+          deuda: saldoReal, // Asignamos el saldo exacto que arroja la base de datos
+          avisos: 0,
+          diasVencidoMax: -9999
+        }
+      }
+
+      mapa[a.unit_id].avisos += 1
+      
+      let diasVencido = 0
+      if (a.due_date) {
+        const fVence = new Date(a.due_date + 'T00:00:00')
+        diasVencido = Math.floor((fHoy - fVence) / (1000 * 60 * 60 * 24))
+      }
+      
+      if (diasVencido > mapa[a.unit_id].diasVencidoMax) {
+        mapa[a.unit_id].diasVencidoMax = diasVencido
+      }
+    }
+    return Object.values(mapa).sort((a, b) => b.deuda - a.deuda)
+  }, [pendientes, responsablesPorUnidad, saldosGlobales])
+
+  // Filtrado de deudores dentro del modal
+  const deudoresFiltrados = useMemo(() => {
+    return deudores.filter((d) => {
+      if (filtroTipoModal && d.tipo !== filtroTipoModal) return false
+      
+      if (filtroTiempoModal) {
+        if (filtroTiempoModal === 'vencidos' && d.diasVencidoMax <= 0) return false
+        if (filtroTiempoModal === '30' && d.diasVencidoMax <= 30) return false
+        if (filtroTiempoModal === '60' && d.diasVencidoMax <= 60) return false
+        if (filtroTiempoModal === '90' && d.diasVencidoMax <= 90) return false
+      }
+      
+      if (filtroTextoModal) {
+        const q = normalizar(filtroTextoModal)
+        if (
+          !normalizar(d.code).includes(q) &&
+          !normalizar(d.comercio || '').includes(q) &&
+          !normalizar(d.responsables).includes(q)
+        ) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [deudores, filtroTipoModal, filtroTiempoModal, filtroTextoModal])
+
+  const abrirPanelNotificar = () => {
+    setFiltroTextoModal('')
+    setFiltroTipoModal('')
+    setFiltroTiempoModal('vencidos') 
+    
+    const inicialesVencidos = deudores.filter(d => d.diasVencidoMax > 0).map(d => d.id)
+    setSeleccionados(inicialesVencidos) 
+    
+    setPanelNotificar(true)
+  }
+
+  const toggleSeleccion = (id) => {
+    setSeleccionados(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const todosSeleccionados = deudoresFiltrados.length > 0 && deudoresFiltrados.every((d) => seleccionados.includes(d.id))
+
+  const toggleTodos = (e) => {
+    if (e.target.checked) {
+      const nuevos = new Set(seleccionados)
+      deudoresFiltrados.forEach((d) => nuevos.add(d.id))
+      setSeleccionados([...nuevos])
+    } else {
+      const filtradosIds = deudoresFiltrados.map((d) => d.id)
+      setSeleccionados(seleccionados.filter((id) => !filtradosIds.includes(id)))
+    }
+  }
 
   const calcularPrevia = useCallback(async () => {
     if (!perfil?.condominium_id) return
@@ -261,6 +388,8 @@ export default function Cobranza() {
   }
 
   const ejecutarNotificacionMasiva = async () => {
+    if (seleccionados.length === 0) return setError('Debe seleccionar al menos un residente.')
+
     setError(null)
     setAviso(null)
     setNotificando(true)
@@ -269,19 +398,22 @@ export default function Cobranza() {
       const { data: { session } } = await supabase.auth.getSession()
       
       const res = await supabase.functions.invoke('notify-debtors', {
-        body: { condominium_id: perfil.condominium_id },
+        body: { 
+          condominium_id: perfil.condominium_id,
+          unit_ids: seleccionados 
+        },
         headers: { Authorization: `Bearer ${session.access_token}` }
       })
 
       if (res.error) throw new Error(res.error.message || 'Error al ejecutar la función de notificación')
       if (res.data?.error) throw new Error(res.data.error)
       
-      setAviso(`Se han enviado notificaciones y correos a ${res.data.usuariosNotificados || 0} residentes morosos de forma exitosa.`)
+      setAviso(`Se han enviado notificaciones y correos a ${res.data.usuariosNotificados || 0} residente(s) de forma exitosa.`)
+      setPanelNotificar(false)
     } catch (err) {
       setError(mensajeError(err))
     } finally {
       setNotificando(false)
-      setConfirmacion(null)
     }
   }
 
@@ -344,7 +476,6 @@ export default function Cobranza() {
             margin-top: 2px; 
             line-height: 1.15; 
           }
-          /* FIX: Botones y paneles en móvil */
           .pagina-cabecera {
             flex-direction: column !important;
             align-items: flex-start !important;
@@ -382,18 +513,11 @@ export default function Cobranza() {
           {esAdmin && (
             <button 
               className="btn btn-secundario btn-accion" 
-              onClick={() => {
-                setConfirmacion({
-                  titulo: 'Notificar a residentes morosos',
-                  mensaje: `El sistema calculará la deuda total de cada residente con avisos pendientes y les enviará un recordatorio automático por correo electrónico y notificación push. ¿Desea proceder?`,
-                  textoConfirmar: 'Sí, enviar recordatorios',
-                  accion: ejecutarNotificacionMasiva,
-                })
-              }}
+              onClick={abrirPanelNotificar}
               disabled={notificando || pendientes.length === 0}
               style={{ backgroundColor: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5' }}
             >
-              {notificando ? 'Enviando...' : '🔔 Notificar morosos'}
+              🔔 Notificar morosos
             </button>
           )}
           <button className="btn btn-secundario btn-accion" onClick={() => setPanelCargo(true)}>
@@ -832,6 +956,109 @@ export default function Cobranza() {
             </button>
           </div>
         </form>
+      </Panel>
+
+      {/* -------------------------------------------------- SELECCIÓN DE MOROSOS */}
+      <Panel abierto={panelNotificar} titulo="Seleccionar residentes a notificar" onCerrar={() => setPanelNotificar(false)} ancho={900}>
+        <p className="texto-ayuda">Revise y desmarque a los residentes que no desea notificar en este momento.</p>
+
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <input
+            className="form-control"
+            style={{ flex: '1 1 200px' }}
+            placeholder="Buscar residente o unidad..."
+            value={filtroTextoModal}
+            onChange={(e) => setFiltroTextoModal(e.target.value)}
+          />
+          <select
+            className="form-control"
+            style={{ flex: '0 0 180px' }}
+            value={filtroTipoModal}
+            onChange={(e) => setFiltroTipoModal(e.target.value)}
+          >
+            <option value="">Cualquier tipo</option>
+            {tiposUnidad.map(t => <option key={t.valor} value={t.valor}>{t.etiqueta}</option>)}
+          </select>
+          <select
+            className="form-control"
+            style={{ flex: '0 0 180px' }}
+            value={filtroTiempoModal}
+            onChange={(e) => setFiltroTiempoModal(e.target.value)}
+          >
+            <option value="">Mostrar todos (Incluye al día)</option>
+            <option value="vencidos">Solo avisos vencidos</option>
+            <option value="30">Vencidos por más de 1 mes</option>
+            <option value="60">Vencidos por más de 2 meses</option>
+            <option value="90">Vencidos por más de 3 meses</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '12px', paddingLeft: '8px' }}>
+          <label className="checkbox-linea" style={{ cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={todosSeleccionados}
+              onChange={toggleTodos}
+            />
+            <strong>Seleccionar resultados filtrados ({deudoresFiltrados.length})</strong>
+          </label>
+        </div>
+
+        <div className="tabla-scroll" style={{ maxHeight: '60vh', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+          <table className="tabla tabla-compacta">
+            <thead>
+              <tr>
+                <th style={{ width: '40px', textAlign: 'center' }}>✓</th>
+                <th>Unidad</th>
+                <th>Responsable</th>
+                <th className="der">Deuda Real</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deudoresFiltrados.map(d => (
+                <tr key={d.id} className="fila-clicable" onClick={() => toggleSeleccion(d.id)}>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={seleccionados.includes(d.id)}
+                      readOnly
+                    />
+                  </td>
+                  <td>
+                    <strong>{d.comercio ? d.comercio : d.code}</strong>
+                    <small className="bloque" style={{color: 'var(--text-muted)'}}>{d.comercio ? d.code : d.tipo?.replace(/_/g, ' ')}</small>
+                  </td>
+                  <td>{d.responsables || '—'}</td>
+                  <td className="der">
+                    <strong>{fmtUSD(d.deuda)}</strong>
+                    <small className="bloque">{d.avisos} aviso(s)</small>
+                    {d.diasVencidoMax > 0 && <span className="badge badge-danger" style={{fontSize: '0.65rem', marginTop: '2px', padding: '2px 4px'}}>Vencido</span>}
+                  </td>
+                </tr>
+              ))}
+              {deudoresFiltrados.length === 0 && (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
+                    No se encontraron residentes con los filtros actuales.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="panel-acciones" style={{ marginTop: '20px' }}>
+          <button type="button" className="btn btn-secundario" onClick={() => setPanelNotificar(false)}>
+            Cancelar
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={notificando || seleccionados.length === 0}
+            onClick={ejecutarNotificacionMasiva}
+          >
+            {notificando ? 'Enviando...' : `Enviar recordatorios (${seleccionados.length})`}
+          </button>
+        </div>
       </Panel>
 
       <DetalleAviso
