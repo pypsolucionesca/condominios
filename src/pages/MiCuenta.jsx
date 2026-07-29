@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { DetalleAviso, DetallePago } from '../components/Detalles'
-import { normalizar, fmtMesAno } from '../lib/formato'
+import { normalizar, fmtMesAno, fmtNumero } from '../lib/formato'
+import { Panel } from '../components/UI'
 
 const fmtUSD = (n) =>
   new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'USD' }).format(Number(n) || 0)
@@ -25,6 +26,22 @@ export default function MiCuenta() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [busqueda, setBusqueda] = useState('')
+  
+  // Estados para la información global (Cuentas y Tasa)
+  const [cuentas, setCuentas] = useState([])
+  const [tasaHoy, setTasaHoy] = useState(null)
+  const [panelCuentas, setPanelCuentas] = useState(false)
+
+  // Cargar Tasa y Cuentas globales una sola vez
+  useEffect(() => {
+    Promise.all([
+      supabase.rpc('rate_health'),
+      supabase.from('accounts').select('*').eq('is_active', true).order('name')
+    ]).then(([rTasa, rCuentas]) => {
+      if (!rTasa.error) setTasaHoy(rTasa.data)
+      if (!rCuentas.error) setCuentas(rCuentas.data || [])
+    })
+  }, [])
 
   useEffect(() => {
     if (unidades.length && !unidadSel) setUnidadSel(unidades[0].id)
@@ -185,10 +202,27 @@ export default function MiCuenta() {
   return (
     <>
       <div className="card">
-        <h2 className="card-header">Hola, {perfil?.full_name || 'residente'}</h2>
+        <div className="card-header-flex" style={{ alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Hola, {perfil?.full_name || 'residente'}</h2>
+            {tasaHoy?.tasa && (
+              <span style={{ display: 'inline-block', marginTop: '6px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 500 }}>
+                Tasa del día: Bs. {fmtNumero(tasaHoy.tasa)}
+              </span>
+            )}
+          </div>
+          
+          <button 
+            className="btn btn-primary" 
+            onClick={() => setPanelCuentas(true)}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            🏦 Datos de Pago
+          </button>
+        </div>
 
         {unidades.length > 1 && (
-          <div className="form-group">
+          <div className="form-group" style={{ marginTop: '16px' }}>
             <label htmlFor="unidad">Apartamento</label>
             <select
               id="unidad"
@@ -205,7 +239,7 @@ export default function MiCuenta() {
           </div>
         )}
 
-        <div className={`saldo-destacado ${saldo > 0 ? 'saldo-deuda' : 'saldo-favor'}`}>
+        <div className={`saldo-destacado ${saldo > 0 ? 'saldo-deuda' : 'saldo-favor'}`} style={{ marginTop: '20px' }}>
           <span className="saldo-etiqueta">
             {saldo > 0 ? 'Saldo pendiente' : saldo < 0 ? 'Saldo a favor' : 'Estado'}
           </span>
@@ -320,7 +354,6 @@ export default function MiCuenta() {
           </div>
 
           <div className="card">
-            {/* FIX EN LÍNEA: Flexbox garantizado para que el botón PDF nunca se pise */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '12px' }}>
               <h2 style={{ margin: 0 }}>Estado de cuenta</h2>
               {movimientos.length > 0 && (
@@ -363,6 +396,54 @@ export default function MiCuenta() {
           </div>
         </>
       )}
+
+      {/* PANEL DE DATOS BANCARIOS (ZERO SUPPORT) */}
+      <Panel abierto={panelCuentas} titulo="Información de Pago" onCerrar={() => setPanelCuentas(false)}>
+        <p className="texto-ayuda" style={{ marginBottom: '20px' }}>
+          Utilice los siguientes datos para realizar sus pagos o transferencias. Luego, repórtelos en la sección "Reportar pago".
+        </p>
+
+        {cuentas.length === 0 ? (
+          <p className="texto-vacio">No hay cuentas bancarias registradas actualmente.</p>
+        ) : (
+          cuentas.map(c => (
+            <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', marginBottom: '16px', backgroundColor: '#fff' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '1.1rem', color: 'var(--primary-color)', display: 'flex', justifyContent: 'space-between' }}>
+                {c.name}
+                <span className="chip">{c.currency}</span>
+              </h3>
+              
+              {c.kind === 'banco' && (
+                <div style={{ marginBottom: '12px' }}>
+                  <strong style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase' }}>Transferencia</strong>
+                  <div><strong>Banco:</strong> {c.bank_name || '—'}</div>
+                  <div><strong>Cuenta:</strong> {c.account_number || '—'}</div>
+                </div>
+              )}
+
+              {(c.pago_movil_telefono || c.pago_movil_cedula) && (
+                <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                  <strong style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', marginBottom: '4px' }}>Pago Móvil</strong>
+                  <div><strong>Banco:</strong> {c.bank_name || '—'}</div>
+                  <div><strong>Teléfono:</strong> {c.pago_movil_telefono}</div>
+                  <div><strong>Cédula / RIF:</strong> {c.pago_movil_cedula}</div>
+                </div>
+              )}
+
+              {c.qr_url && (
+                <div style={{ marginTop: '16px', textAlign: 'center', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+                  <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem' }}>Escanear QR para pagar rápido</strong>
+                  <img src={c.qr_url} alt="QR de pago" style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                </div>
+              )}
+            </div>
+          ))
+        )}
+        
+        <div className="panel-acciones">
+          <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setPanelCuentas(false)}>Entendido</button>
+        </div>
+      </Panel>
 
       <DetalleAviso
         invoiceId={avisoDetalle}

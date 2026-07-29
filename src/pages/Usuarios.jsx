@@ -213,13 +213,21 @@ export default function Usuarios() {
     setError(null)
     setAviso(null)
     try {
-      const { error: err } = await supabase
+      // 1. Primero lo borramos de cualquier unidad asignada
+      await supabase
         .from('unit_members')
         .delete()
         .eq('user_id', userId)
 
+      // 2. Luego lo sacamos definitivamente del condominio.
+      // Omitimos modificar la columna "role" para evitar el error de restricción not-null.
+      const { error: err } = await supabase
+        .from('profiles')
+        .update({ condominium_id: null, is_active: false })
+        .eq('id', userId)
+
       if (err) throw err
-      setAviso('El residente ha sido desvinculado de la unidad correctamente.')
+      setAviso('El usuario ha sido removido del condominio correctamente.')
       setPanelUsuario(false)
       await cargar()
     } catch (err) {
@@ -366,7 +374,6 @@ export default function Usuarios() {
         </div>
       )}
 
-      {/* Paneles y modales */}
       <Confirmar
         abierto={Boolean(confirmar)}
         titulo={confirmar?.titulo}
@@ -449,7 +456,6 @@ export default function Usuarios() {
         </form>
       </Panel>
 
-      {/* Perfil Unificado del Usuario */}
       <Panel
         abierto={panelUsuario}
         titulo="Perfil de usuario"
@@ -597,15 +603,15 @@ export default function Usuarios() {
                       className="btn btn-danger btn-accion"
                       onClick={() =>
                         setConfirmar({
-                          titulo: 'Desvincular residente',
-                          mensaje: `¿Desea remover a ${usuarioActivo.full_name} de su unidad? Ya no podrá ver estados de cuenta.`,
-                          texto: 'Sí, desvincular',
+                          titulo: 'Remover usuario',
+                          mensaje: `¿Desea remover definitivamente a ${usuarioActivo.full_name} del condominio? Esta invitación será cancelada y desaparecerá de la lista.`,
+                          texto: 'Sí, remover',
                           peligro: true,
                           accion: () => ejecutarDesvinculacion(usuarioActivo.id),
                         })
                       }
                     >
-                      🚪 Desvincular de unidad
+                      🚪 Remover del condominio
                     </button>
                   )}
                 </div>

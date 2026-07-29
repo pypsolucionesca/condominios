@@ -43,7 +43,10 @@ export default function Tesoreria() {
     bank_name: '',
     account_number: '',
     opening_balance: '',
+    pago_movil_telefono: '',
+    pago_movil_cedula: '',
   })
+  const [qrArchivo, setQrArchivo] = useState(null)
 
   const FORM_GASTO = {
     account_id: '',
@@ -210,6 +213,7 @@ export default function Tesoreria() {
     setPanel(null)
     setEditando(null)
     setReciboEmpleado(null)
+    setQrArchivo(null)
   }
 
   // ------------------------------------------------------------- cuentas
@@ -227,7 +231,11 @@ export default function Tesoreria() {
         currency: formCuenta.currency,
         bank_name: formCuenta.bank_name.trim() || null,
         account_number: formCuenta.account_number.trim() || null,
+        pago_movil_telefono: formCuenta.pago_movil_telefono?.trim() || null,
+        pago_movil_cedula: formCuenta.pago_movil_cedula?.trim() || null,
       }
+
+      let cuentaId = editando?.id
 
       if (editando) {
         if (formCuenta.currency !== editando.currency) {
@@ -242,17 +250,29 @@ export default function Tesoreria() {
         const { error: err } = await supabase.from('accounts').update(resto).eq('id', editando.id)
         if (err) throw err
       } else {
-        const { error: err } = await supabase.from('accounts').insert([
+        const { data, error: err } = await supabase.from('accounts').insert([
           {
             ...datos,
             condominium_id: perfil.condominium_id,
             opening_balance: Number(formCuenta.opening_balance) || 0,
           },
-        ])
+        ]).select('id').single()
         if (err) throw err
+        cuentaId = data.id
+      }
+
+      // Guardar el QR si se seleccionó uno
+      if (qrArchivo && cuentaId) {
+        const { subirImagen } = await import('../lib/imagenes')
+        const { url } = await subirImagen(qrArchivo, 'logos', `cuentas/${cuentaId}/qr`, {
+          maxAncho: 600,
+          maxAlto: 600,
+        })
+        await supabase.from('accounts').update({ qr_url: url }).eq('id', cuentaId)
       }
 
       setAviso(editando ? 'Cuenta actualizada.' : 'Cuenta registrada.')
+      setQrArchivo(null)
       cerrarPanel()
       cargar()
     } catch (err) {
@@ -962,7 +982,10 @@ export default function Tesoreria() {
                       bank_name: '',
                       account_number: '',
                       opening_balance: '',
+                      pago_movil_telefono: '',
+                      pago_movil_cedula: '',
                     })
+                    setQrArchivo(null)
                     setPanel('cuenta')
                   }}
                 >
@@ -1039,7 +1062,10 @@ export default function Tesoreria() {
                                 bank_name: c.bank_name || '',
                                 account_number: c.account_number || '',
                                 opening_balance: c.opening_balance,
+                                pago_movil_telefono: c.pago_movil_telefono || '',
+                                pago_movil_cedula: c.pago_movil_cedula || '',
                               })
+                              setQrArchivo(null)
                               setPanel('cuenta')
                             },
                           },
@@ -1460,26 +1486,60 @@ export default function Tesoreria() {
           </div>
 
           {formCuenta.kind === 'banco' && (
-            <div className="grid-form">
-              <div className="form-group">
-                <label>Banco</label>
-                <input
-                  className="form-control"
-                  value={formCuenta.bank_name}
-                  onChange={(e) => setFormCuenta({ ...formCuenta, bank_name: e.target.value })}
+            <>
+              <div className="grid-form">
+                <div className="form-group">
+                  <label>Banco</label>
+                  <input
+                    className="form-control"
+                    value={formCuenta.bank_name}
+                    onChange={(e) => setFormCuenta({ ...formCuenta, bank_name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Número de cuenta</label>
+                  <input
+                    className="form-control"
+                    value={formCuenta.account_number}
+                    onChange={(e) =>
+                      setFormCuenta({ ...formCuenta, account_number: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              
+              <div className="separador" style={{ margin: '16px 0' }} />
+              <h4 className="subtitulo">Pago Móvil (Opcional)</h4>
+              <div className="grid-form">
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input
+                    className="form-control"
+                    value={formCuenta.pago_movil_telefono}
+                    onChange={(e) => setFormCuenta({ ...formCuenta, pago_movil_telefono: e.target.value })}
+                    placeholder="0414-1234567"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Cédula / RIF</label>
+                  <input
+                    className="form-control"
+                    value={formCuenta.pago_movil_cedula}
+                    onChange={(e) => setFormCuenta({ ...formCuenta, pago_movil_cedula: e.target.value })}
+                    placeholder="J-12345678-9"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginTop: '16px' }}>
+                <SelectorImagen
+                  etiqueta="Código QR (Opcional)"
+                  valorActual={editando?.qr_url}
+                  onSeleccion={setQrArchivo}
+                  ayuda="Si su banco genera un QR para pagos rápidos, súbalo aquí para que los residentes puedan escanearlo desde su cuenta."
                 />
               </div>
-              <div className="form-group">
-                <label>Número de cuenta</label>
-                <input
-                  className="form-control"
-                  value={formCuenta.account_number}
-                  onChange={(e) =>
-                    setFormCuenta({ ...formCuenta, account_number: e.target.value })
-                  }
-                />
-              </div>
-            </div>
+            </>
           )}
 
           {!editando && (
@@ -1501,7 +1561,7 @@ export default function Tesoreria() {
             </div>
           )}
 
-          <div className="panel-acciones">
+          <div className="panel-acciones" style={{ marginTop: '24px' }}>
             <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
               Cancelar
             </button>
