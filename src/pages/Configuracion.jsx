@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtNumero, fmtFecha, fmtHoraLocal, hoy } from '../lib/formato'
-import { Aviso, Cargador, SelectorImagen, Panel } from '../components/UI'
+import { Aviso, Cargador, SelectorImagen, Panel, IconoAyuda } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import { subirLogoCondominio } from '../lib/imagenes'
 
@@ -28,6 +28,9 @@ export default function Configuracion() {
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [unidadesDirector, setUnidadesDirector] = useState([])
+  
+  // Estado para el almacenamiento
+  const [usoStorage, setUsoStorage] = useState({ usado: 0, limite: 52428800 })
 
   // Estados para exportar
   const [panelExportar, setPanelExportar] = useState(false)
@@ -67,7 +70,9 @@ export default function Configuracion() {
   }, [condominio])
 
   const cargarGlobales = useCallback(async () => {
-    const [rT, rS, rU] = await Promise.all([
+    if (!perfil?.condominium_id) return
+
+    const [rT, rS, rU, rCondo] = await Promise.all([
       supabase
         .from('exchange_rates')
         .select('rate_date, rate_bcv, source, status')
@@ -75,12 +80,21 @@ export default function Configuracion() {
         .limit(1)
         .maybeSingle(),
       supabase.rpc('rate_health'),
-      supabase.from('units').select('id, code').order('code')
+      supabase.from('units').select('id, code').order('code'),
+      supabase.from('condominiums').select('storage_used_bytes, storage_limit_bytes, subscription_status').eq('id', perfil.condominium_id).single()
     ])
     setTasaActual(rT.data)
     setSalud(rS.data)
     setUnidadesDirector(rU.data || [])
-  }, [])
+    
+    if (rCondo.data) {
+      setUsoStorage({
+        usado: Number(rCondo.data.storage_used_bytes) || 0,
+        limite: Number(rCondo.data.storage_limit_bytes) || 52428800,
+        estado: rCondo.data.subscription_status
+      })
+    }
+  }, [perfil?.condominium_id])
 
   useEffect(() => {
     cargarGlobales()
@@ -288,14 +302,12 @@ export default function Configuracion() {
     }
   }
 
-  // --- FUNCIÓN DE REINICIO DEL SISTEMA ---
   const ejecutarReinicio = async (e) => {
     e.preventDefault()
     setError(null)
     setReseteando(true)
 
     try {
-      // 1. Si es Nivel 2 (Reinicio de Fábrica) y el condominio tiene logo, destruirlo del bucket
       if (nivelReset === 'total' && condominio?.logo_url) {
         try {
           const urlParts = condominio.logo_url.split('/storage/v1/object/public/')
@@ -311,13 +323,11 @@ export default function Configuracion() {
         }
       }
 
-      // 2. Ejecutar la limpieza masiva en BD
       const funcionBase = nivelReset === 'total' ? 'wipe_all_data' : 'wipe_financial_data'
       const { error: errSql } = await supabase.rpc(funcionBase, { p_condominium_id: perfil.condominium_id })
       
       if (errSql) throw errSql
 
-      // 3. Correo de auditoría
       try {
         const { data: { session } } = await supabase.auth.getSession()
         await supabase.functions.invoke('auditoria-reset', {
@@ -347,6 +357,10 @@ export default function Configuracion() {
     }
   }
 
+  // Cálculos visuales de la barra de progreso
+  const porcentajeUso = Math.min((usoStorage.usado / usoStorage.limite) * 100, 100)
+  const colorBarra = porcentajeUso > 90 ? '#ef4444' : porcentajeUso > 75 ? '#f59e0b' : '#3b82f6'
+
   if (!form) return <Cargador texto="Cargando configuración…" />
 
   return (
@@ -361,10 +375,47 @@ export default function Configuracion() {
       {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
       {aviso && <Aviso tipo="exito" onCerrar={() => setAviso(null)}>{aviso}</Aviso>}
 
+      {/* ------------------------------------------------------ ESTADO DEL PLAN */}
+      <div className="card" style={{ backgroundColor: '#f8fafc' }}>
+        <h2 className="card-header" style={{ marginBottom: '10px' }}>
+          Suscripción y Almacenamiento
+          <IconoAyuda texto="Espacio en la nube utilizado por sus recibos, facturas y comprobantes de pago." />
+        </h2>
+        
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 500 }}>
+            Plan actual: <span style={{ color: 'var(--primary-color)' }}>{usoStorage.estado === 'prueba' ? 'Prueba Gratuita' : 'P&P Admin Pro'}</span>
+          </span>
+          <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+            {((usoStorage.usado / 1024) / 1024).toFixed(2)} MB de {((usoStorage.limite / 1024) / 1024).toFixed(0)} MB
+          </span>
+        </div>
+
+        <div style={{ width: '100%', height: '10px', backgroundColor: '#e2e8f0', borderRadius: '5px', overflow: 'hidden' }}>
+          <div 
+            style={{ 
+              width: `${porcentajeUso}%`, 
+              height: '100%', 
+              backgroundColor: colorBarra, 
+              transition: 'width 0.5s ease-in-out' 
+            }} 
+          />
+        </div>
+
+        {porcentajeUso > 85 && (
+          <p style={{ marginTop: '12px', fontSize: '0.85rem', color: '#b91c1c', margin: '12px 0 0 0' }}>
+            ⚠️ Su almacenamiento está casi lleno. Contacte a soporte técnico para ampliar la capacidad de su cuenta.
+          </p>
+        )}
+      </div>
+
       {/* ------------------------------------------------------ tasa BCV */}
       <div className="card">
         <div className="card-header-flex">
-          <h2>Tasa de cambio</h2>
+          <h2>
+            Tasa de cambio
+            <IconoAyuda texto="El sistema consulta la tasa oficial diariamente, pero usted puede registrar tasas manuales si necesita cobrar pagos de fechas anteriores." />
+          </h2>
           <button
             className="btn btn-primary btn-accion"
             onClick={actualizarDesdeBCV}
@@ -373,11 +424,6 @@ export default function Configuracion() {
             {actualizando ? 'Consultando…' : 'Actualizar desde BCV'}
           </button>
         </div>
-
-        <p className="texto-ayuda">
-          Cada aviso, pago y gasto guarda la tasa del día en que se registró, de modo que los
-          documentos históricos siempre pueden reconstruirse.
-        </p>
 
         {salud?.obsoleta && salud?.tasa && (
           <Aviso tipo="aviso">
@@ -453,16 +499,12 @@ export default function Configuracion() {
             <SelectorImagen
               valorActual={condominio?.logo_url}
               onSeleccion={setLogoArchivo}
-              ayuda="Logo para avisos y recibos"
+              ayuda="Aparece en los avisos, recibos y reportes en PDF."
             />
-            <small className="texto-ayuda">
-              Aparece en los avisos, recibos y reportes en PDF. Es el logo de su condominio
-              (distinto de la marca de la aplicación).
-            </small>
           </div>
 
           <div className="form-group">
-            <label>Nombre del condominio</label>
+            <label>Nombre de la empresa o condominio</label>
             <input
               className="form-control"
               value={form.name}
@@ -472,7 +514,10 @@ export default function Configuracion() {
 
           <div className="grid-form">
             <div className="form-group">
-              <label>Modo predeterminado</label>
+              <label>
+                Modo predeterminado
+                <IconoAyuda texto="Define cómo se calcula el recibo base. 'Fija' cobra un monto igual a todos. 'Alícuota' reparte un presupuesto mensual según el % de la unidad." />
+              </label>
               <select
                 className="form-control"
                 value={form.default_billing_mode}
@@ -485,7 +530,10 @@ export default function Configuracion() {
             </div>
 
             <div className="form-group">
-              <label>Cuota mensual (USD)</label>
+              <label>
+                Cuota base (USD)
+                <IconoAyuda texto="Monto que aplica a todas las unidades por igual. Puede personalizar el monto de cada unidad en la pestaña 'Unidades'." />
+              </label>
               <input
                 type="number"
                 step="0.01"
@@ -494,13 +542,13 @@ export default function Configuracion() {
                 value={form.default_fee}
                 onChange={(e) => setForm({ ...form, default_fee: e.target.value })}
               />
-              <small className="texto-ayuda">
-                Aplica a todas las unidades, salvo las que tengan monto propio.
-              </small>
             </div>
 
             <div className="form-group">
-              <label>Día de vencimiento</label>
+              <label>
+                Día de vencimiento
+                <IconoAyuda texto="Día tope del mes para pagar. Después de esta fecha, el sistema considerará la deuda en mora." />
+              </label>
               <input
                 type="number"
                 min="1"
@@ -509,9 +557,6 @@ export default function Configuracion() {
                 value={form.due_day}
                 onChange={(e) => setForm({ ...form, due_day: e.target.value })}
               />
-              <small className="texto-ayuda">
-                Entre 1 y 28, para que exista en todos los meses.
-              </small>
             </div>
           </div>
 
@@ -524,17 +569,19 @@ export default function Configuracion() {
               onChange={(e) => setForm({ ...form, auto_billing: e.target.checked })}
             />
             <div>
-              <strong>Emitir las cuotas automáticamente</strong>
-              <small>
-                El sistema generará los avisos del mes sin intervención. Recibirá una
-                notificación al hacerlo, y nunca duplica un período ya emitido.
-              </small>
+              <strong>
+                Emitir las cuotas automáticamente
+                <IconoAyuda texto="El sistema generará todos los avisos del mes a las 00:00 del día configurado, sin necesidad de intervención manual." />
+              </strong>
             </div>
           </label>
 
           {form.auto_billing && (
             <div className="form-group" style={{ marginTop: 16 }}>
-              <label>Día de emisión</label>
+              <label>
+                Día de emisión
+                <IconoAyuda texto="Día en el que se envían los recibos de cobro. Debe ser anterior al día de vencimiento (hoy configurado el día 5)." />
+              </label>
               <input
                 type="number"
                 min="1"
@@ -544,17 +591,16 @@ export default function Configuracion() {
                 value={form.auto_billing_day}
                 onChange={(e) => setForm({ ...form, auto_billing_day: e.target.value })}
               />
-              <small className="texto-ayuda">
-                Día del mes en que se emiten los avisos. Debe ser anterior al vencimiento
-                (hoy configurado el día {form.due_day}).
-              </small>
             </div>
           )}
 
           <div className="separador" />
 
           <div className="form-group">
-            <label>Nota al pie de los avisos</label>
+            <label>
+              Nota al pie de los avisos
+              <IconoAyuda texto="Úselo para colocar números de cuenta bancaria, datos de pago móvil u horarios de oficina." />
+            </label>
             <textarea
               className="form-control"
               rows={2}
@@ -569,7 +615,6 @@ export default function Configuracion() {
         <div className="card">
           <div className="card-header-flex">
             <h2>Respaldo y Reportes</h2>
-            {/* Es CLAVE este type="button" para que al hacer clic no se guarde el formulario de arriba */}
             <button
               type="button"
               className="btn btn-secundario btn-accion"
@@ -585,11 +630,10 @@ export default function Configuracion() {
 
         {/* --------------------------------------------------------- mora */}
         <div className="card">
-          <h2 className="card-header">Recargo por mora</h2>
-          <p className="texto-ayuda">
-            Desactivado por defecto. Al activarlo, el recargo se aplica manualmente desde
-            Cobranza, nunca de forma automática.
-          </p>
+          <h2 className="card-header">
+            Recargo por mora
+            <IconoAyuda texto="Activar el recargo no suma la mora automáticamente. Le habilitará un botón al administrador en 'Cobranza' para aplicarla manualmente a los deudores cuando lo decida." />
+          </h2>
 
           <div className="grid-form">
             <div className="form-group">
@@ -622,7 +666,10 @@ export default function Configuracion() {
                 </div>
 
                 <div className="form-group">
-                  <label>Días de gracia</label>
+                  <label>
+                    Días de gracia
+                    <IconoAyuda texto="Margen de tolerancia después de la fecha de vencimiento antes de permitir el recargo." />
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -647,17 +694,18 @@ export default function Configuracion() {
               onChange={(e) => setForm({ ...form, show_finances_to_all: e.target.checked })}
             />
             <div>
-              <strong>Cuentas abiertas a todos</strong>
-              <small>
-                Los residentes (no los restringidos) pueden ver los gastos del condominio, los
-                saldos de banco y caja, y los pagos al personal. La escritura sigue siendo
-                exclusiva del administrador.
-              </small>
+              <strong>
+                Cuentas abiertas a todos
+                <IconoAyuda texto="Al activar esto, los residentes podrán ver las gráficas de Tesorería, cuentas bancarias y gastos. Los usuarios 'restringidos' no verán nada, independientemente de esta opción." />
+              </strong>
             </div>
           </label>
 
           <div className="form-group" style={{ marginTop: 22 }}>
-            <label>Visibilidad de la morosidad</label>
+            <label>
+              Visibilidad de la morosidad
+              <IconoAyuda texto="Decide qué ven los vecinos. 'Agregada' solo muestra el monto total global que le deben al edificio. 'Detallada' publica la lista completa con código y monto individual." />
+            </label>
             <select
               className="form-control"
               value={form.delinquency_visibility}
@@ -667,11 +715,6 @@ export default function Configuracion() {
               <option value="agregado">Agregada · totales sin identificar unidades</option>
               <option value="detallado">Detallada · todos ven quién debe y cuánto</option>
             </select>
-            <small className="texto-ayuda">
-              La opción detallada expone datos individuales (visibles para los residentes no
-              restringidos). Conviene que sea una decisión de asamblea, no del administrador
-              por su cuenta.
-            </small>
           </div>
         </div>
 

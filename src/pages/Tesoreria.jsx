@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO, normalizar } from '../lib/formato'
-import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen } from '../components/UI'
+import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen, IconoAyuda } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import { DetalleGasto } from '../components/Detalles'
 import LibroCuenta from '../components/LibroCuenta'
@@ -1298,7 +1298,10 @@ export default function Tesoreria() {
       {pestana === 'compromisos' && (
         <div className="card">
           <div className="card-header-flex">
-            <h2>Pagos recurrentes</h2>
+            <h2>
+              Pagos recurrentes
+              <IconoAyuda texto="Sueldos y servicios que se repiten. El sistema avisa al vencer; el pago se registra manualmente para mantener confirmación humana." />
+            </h2>
             {puedeOperar && (
               <button
                 className="btn btn-primary btn-accion"
@@ -1321,11 +1324,6 @@ export default function Tesoreria() {
               </button>
             )}
           </div>
-
-          <p className="texto-ayuda">
-            Sueldos y servicios que se repiten. El sistema avisa al vencer; el pago se registra
-            manualmente para que siempre haya una confirmación humana.
-          </p>
 
           {compromisos.length === 0 ? (
             <Vacio
@@ -1446,7 +1444,10 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Moneda *</label>
+              <label>
+                Moneda *
+                {editando && <IconoAyuda texto="Solo puede cambiarse si la cuenta no tiene movimientos registrados." />}
+              </label>
               <select
                 className="form-control"
                 value={formCuenta.currency}
@@ -1455,11 +1456,6 @@ export default function Tesoreria() {
                 <option value="USD">Dólares (USD)</option>
                 <option value="VES">Bolívares (Bs.)</option>
               </select>
-              {editando && (
-                <small className="texto-ayuda">
-                  Solo puede cambiarse si la cuenta no tiene movimientos registrados.
-                </small>
-              )}
             </div>
           </div>
 
@@ -1488,7 +1484,10 @@ export default function Tesoreria() {
 
           {!editando && (
             <div className="form-group">
-              <label>Saldo inicial</label>
+              <label>
+                Saldo inicial
+                <IconoAyuda texto="Fondos existentes al momento de registrar la cuenta. No podrá modificarse después, a menos que use un Ajuste de Arqueo." />
+              </label>
               <input
                 type="number"
                 step="0.01"
@@ -1499,9 +1498,6 @@ export default function Tesoreria() {
                 }
                 placeholder="0.00"
               />
-              <small className="texto-ayuda">
-                Fondos existentes al momento de registrar la cuenta. No podrá modificarse después.
-              </small>
             </div>
           )}
 
@@ -1562,7 +1558,10 @@ export default function Tesoreria() {
           </div>
 
           <div className="form-group">
-            <label>Monto del gasto en dólares *</label>
+            <label>
+              Monto del gasto en dólares *
+              <IconoAyuda texto="La contabilidad del condominio se lleva en dólares. Indique aquí el valor del gasto, sin importar en qué moneda lo pague." />
+            </label>
             <input
               type="number"
               step="0.01"
@@ -1582,10 +1581,6 @@ export default function Tesoreria() {
               }}
               placeholder="0.00"
             />
-            <small className="texto-ayuda">
-              La contabilidad del condominio se lleva en dólares. Indique aquí el valor del
-              gasto, sin importar en qué moneda lo pague.
-            </small>
           </div>
 
           {formGasto.currency === 'VES' && (
@@ -1598,7 +1593,10 @@ export default function Tesoreria() {
               ) : (
                 <>
                   <div className="form-group">
-                    <label>Monto exacto pagado en bolívares</label>
+                    <label>
+                      Monto exacto pagado en bolívares
+                      <IconoAyuda texto="Ajústelo si el pago real difiere del cálculo automático por temas de redondeo del banco." />
+                    </label>
                     <input
                       type="number"
                       step="0.01"
@@ -1617,9 +1615,6 @@ export default function Tesoreria() {
                         })
                       }}
                     />
-                    <small className="texto-ayuda">
-                      Ajústelo si el pago real difiere del cálculo, por redondeo del banco.
-                    </small>
                   </div>
 
                   <div className="conversion-bloque">
@@ -1707,13 +1702,16 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Proveedor</label>
+              <label>
+                Proveedor
+                <IconoAyuda texto="Puede escribir el nombre libremente o elegir uno guardado en la pestaña Proveedores." />
+              </label>
               <input
                 className="form-control"
                 list="lista-proveedores"
                 value={formGasto.supplier}
                 onChange={(e) => setFormGasto({ ...formGasto, supplier: e.target.value })}
-                placeholder="Elija uno o escriba el nombre"
+                placeholder="Elija uno o escriba"
               />
               <datalist id="lista-proveedores">
                 {personal
@@ -1722,12 +1720,6 @@ export default function Tesoreria() {
                     <option key={p.id} value={p.full_name} />
                   ))}
               </datalist>
-              {personal.filter((p) => p.kind !== 'empleado').length === 0 && (
-                <small className="texto-ayuda">
-                  No hay proveedores registrados. Puede escribir el nombre aquí, o crearlos
-                  en la pestaña Proveedores para reutilizarlos.
-                </small>
-              )}
             </div>
 
             <div className="form-group">
@@ -1997,7 +1989,10 @@ export default function Tesoreria() {
               {formPersona.kind === 'empleado' && (
                 <>
                   <div className="separador" />
-                  <h4 className="subtitulo">Remuneración</h4>
+                  <h4 className="subtitulo">
+                    Remuneración
+                    <IconoAyuda texto="Se usa para generar pagos rápidos con un clic. El sistema NO calcula prestaciones, vacaciones ni retenciones de ley." />
+                  </h4>
 
                   <div className="grid-form">
                     <div className="form-group">
@@ -2055,11 +2050,6 @@ export default function Tesoreria() {
                       </select>
                     </div>
                   </div>
-
-                  <p className="texto-ayuda">
-                    El salario se usa para generar el pago con un clic. El sistema no calcula
-                    prestaciones, vacaciones ni retenciones de ley.
-                  </p>
                 </>
               )}
             </>
@@ -2292,7 +2282,10 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Frecuencia *</label>
+              <label>
+                Frecuencia *
+                <IconoAyuda texto="El sistema le avisará automáticamente cuando este compromiso esté por vencer según la frecuencia elegida." />
+              </label>
               <select
                 className="form-control"
                 value={formCompromiso.frequency}
@@ -2594,16 +2587,15 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Fecha del pago *</label>
+              <label>
+                Fecha del pago *
+                <IconoAyuda texto="Determina la tasa automática. Si registra un pago de días anteriores, modifique la tasa manualmente más abajo." />
+              </label>
               <CampoFecha
                 className="form-control"
                 value={pagoEmpleado.payment_date}
                 onChange={(v) => setPagoEmpleado({ ...pagoEmpleado, payment_date: v })}
               />
-              <small className="texto-ayuda">
-                Determina la tasa. Para un pago de fecha pasada, indique la tasa de ese día
-                más abajo.
-              </small>
             </div>
 
             <div className="form-group">
@@ -2664,7 +2656,10 @@ export default function Tesoreria() {
               <div className="conversion-bloque">
                 <div className="grid-form">
                   <div className="form-group">
-                    <label>Tasa (Bs. por USD)</label>
+                    <label>
+                      Tasa (Bs. por USD)
+                      <IconoAyuda texto="Para pagos de fechas pasadas, escriba aquí la tasa exacta de ese día." />
+                    </label>
                     <input
                       type="number"
                       step="any"
@@ -2684,9 +2679,6 @@ export default function Tesoreria() {
                       }}
                       placeholder="Tasa del día del pago"
                     />
-                    <small className="texto-ayuda">
-                      Para pagos de fechas pasadas, use la tasa de ese día.
-                    </small>
                   </div>
                   <div className="form-group">
                     <label>Monto a pagar (Bs.)</label>
@@ -2850,7 +2842,10 @@ export default function Tesoreria() {
           </div>
 
           <div className="form-group">
-            <label>Tipo de movimiento *</label>
+            <label>
+              Tipo de movimiento *
+              <IconoAyuda texto="Comisiones bancarias o ajustes de arqueo. No use esto para registrar los gastos operativos regulares del condominio." />
+            </label>
             <select
               className="form-control"
               value={formMovimiento.kind}
@@ -2878,7 +2873,10 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Monto *</label>
+              <label>
+                Monto *
+                <IconoAyuda texto="Siempre debe ser un valor positivo. El 'Tipo de movimiento' elegido arriba define automáticamente si este monto se sumará o se restará a la cuenta." />
+              </label>
               <input
                 type="number"
                 step="0.01"
@@ -2887,7 +2885,6 @@ export default function Tesoreria() {
                 value={formMovimiento.amount}
                 onChange={(e) => setFormMovimiento({ ...formMovimiento, amount: e.target.value })}
               />
-              <small className="texto-ayuda">Siempre positivo; el tipo define el signo.</small>
             </div>
 
             <div className="form-group">
@@ -2917,14 +2914,12 @@ export default function Tesoreria() {
         titulo={`Saldo inicial · ${saldoInicial.cuenta?.name || ''}`}
         onCerrar={cerrarPanel}
       >
-        <p className="texto-ayuda">
-          Fondos con los que se abrió la cuenta. Solo puede modificarse mientras no haya
-          movimientos registrados; después debe usarse un ajuste de arqueo.
-        </p>
-
         <form onSubmit={guardarSaldoInicial}>
           <div className="form-group">
-            <label>Saldo inicial ({saldoInicial.cuenta?.currency})</label>
+            <label>
+              Saldo inicial ({saldoInicial.cuenta?.currency})
+              <IconoAyuda texto="Fondos con los que se abrió la cuenta. Solo puede modificarse mientras no haya otros movimientos registrados." />
+            </label>
             <input
               type="number"
               step="0.01"

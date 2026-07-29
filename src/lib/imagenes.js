@@ -5,9 +5,9 @@ import { supabase } from './supabase'
  *
  * Se hace aquí y no en el servidor por tres razones: no consume cuota de
  * Edge Functions, el usuario sube menos datos (importante con conexiones
- * lentas o datos móviles), y no requiere dependencias externas.
+ * lentas o datos móviles), y no requiere dependencias externas[cite: 3].
  *
- * Un logo típico de 800 KB queda en unos 30 KB.
+ * Un logo típico de 800 KB queda en unos 30 KB[cite: 3].
  */
 export async function comprimirImagen(file, opciones = {}) {
   const {
@@ -23,7 +23,7 @@ export async function comprimirImagen(file, opciones = {}) {
 
   const bitmap = await crearBitmap(file)
 
-  // Escala manteniendo la proporción; nunca amplía imágenes pequeñas
+  // Escala manteniendo la proporción; nunca amplía imágenes pequeñas[cite: 3]
   let { width, height } = bitmap
   const escala = Math.min(maxAncho / width, maxAlto / height, 1)
   width = Math.round(width * escala)
@@ -48,7 +48,7 @@ export async function comprimirImagen(file, opciones = {}) {
     )
   })
 
-  // Safari antiguo no soporta WebP en toBlob y devuelve PNG
+  // Safari antiguo no soporta WebP en toBlob y devuelve PNG[cite: 3]
   const extension = blob.type === 'image/webp' ? 'webp' : 'png'
 
   return { blob, extension, tamanoOriginal: file.size, tamanoFinal: blob.size }
@@ -59,7 +59,7 @@ async function crearBitmap(file) {
     try {
       return await createImageBitmap(file)
     } catch {
-      /* algunos navegadores fallan con ciertos formatos; se usa el respaldo */
+      /* algunos navegadores fallan con ciertos formatos; se usa el respaldo[cite: 3] */
     }
   }
 
@@ -79,11 +79,50 @@ async function crearBitmap(file) {
 }
 
 /**
- * Comprime y sube una imagen a Supabase Storage.
- * Devuelve la URL pública lista para guardar en la base de datos.
+ * Valida de forma segura si la empresa actual tiene suficiente
+ * espacio en su cuota de almacenamiento para subir un nuevo archivo.
+ */
+async function verificarCuota(tamanoBytesNuevos) {
+  const { data: authData } = await supabase.auth.getUser()
+  if (!authData?.user) return // Falla silenciosa si no hay sesión para dejar que las políticas RLS actúen.
+
+  // Buscamos a qué condominio pertenece el usuario activo
+  const { data: perfil } = await supabase
+    .from('profiles')
+    .select('condominium_id')
+    .eq('id', authData.user.id)
+    .single()
+
+  if (!perfil?.condominium_id) return
+
+  // Buscamos los valores de uso y límite en la tabla maestra
+  const { data: condo } = await supabase
+    .from('condominiums')
+    .select('storage_used_bytes, storage_limit_bytes')
+    .eq('id', perfil.condominium_id)
+    .single()
+
+  if (!condo) return
+
+  const limite = Number(condo.storage_limit_bytes) || 1073741824 // 1 GB por defecto
+  const usado = Number(condo.storage_used_bytes) || 0
+
+  if (usado + tamanoBytesNuevos > limite) {
+    throw new Error(
+      `Límite de almacenamiento alcanzado (${formatearTamano(limite)}). Elimine archivos antiguos o contacte a P&P Soluciones.`
+    )
+  }
+}
+
+/**
+ * Comprime y sube una imagen a Supabase Storage[cite: 3].
+ * Devuelve la URL pública lista para guardar en la base de datos[cite: 3].
  */
 export async function subirImagen(file, bucket, ruta, opciones = {}) {
   const { blob, extension, tamanoOriginal, tamanoFinal } = await comprimirImagen(file, opciones)
+
+  // Verificamos el espacio antes de procesar la subida
+  await verificarCuota(tamanoFinal)
 
   const nombre = `${ruta}-${Date.now()}.${extension}`
 
@@ -106,7 +145,7 @@ export async function subirImagen(file, bucket, ruta, opciones = {}) {
   }
 }
 
-/** Sube el logo de una unidad. Solo administradores. */
+/** Sube el logo de una unidad. Solo administradores[cite: 3]. */
 export function subirLogoUnidad(file, unitId) {
   return subirImagen(file, 'logos', `unidad/${unitId}`, {
     maxAncho: 512,
@@ -118,7 +157,7 @@ export function subirLogoUnidad(file, unitId) {
 /**
  * Sube el logo del condominio (el que aparece en avisos, recibos y
  * reportes en PDF). Es distinto de la marca de la aplicación: cada
- * condominio personaliza sus documentos con su propia imagen.
+ * condominio personaliza sus documentos con su propia imagen[cite: 3].
  */
 export function subirLogoCondominio(file, condominiumId) {
   return subirImagen(file, 'logos', `condominio/${condominiumId}`, {
@@ -128,7 +167,7 @@ export function subirLogoCondominio(file, condominiumId) {
   })
 }
 
-/** Sube el avatar del usuario. La carpeta debe ser su propio id. */
+/** Sube el avatar del usuario. La carpeta debe ser su propio id[cite: 3]. */
 export function subirAvatar(file, userId) {
   return subirImagen(file, 'avatars', `${userId}/perfil`, {
     maxAncho: 400,
@@ -139,11 +178,13 @@ export function subirAvatar(file, userId) {
 
 /**
  * Sube un comprobante de pago. Se permite más resolución porque el
- * administrador necesita leer números de referencia.
+ * administrador necesita leer números de referencia[cite: 3].
  */
 export async function subirComprobante(file, unitId) {
-  // Los PDF se suben tal cual: comprimirlos como imagen los destruiría
+  // Los PDF se suben tal cual: comprimirlos como imagen los destruiría[cite: 3]
   if (file.type === 'application/pdf') {
+    await verificarCuota(file.size)
+
     const nombre = `${unitId}/${Date.now()}.pdf`
     const { error } = await supabase.storage.from('receipts').upload(nombre, file, {
       contentType: 'application/pdf',
@@ -159,6 +200,8 @@ export async function subirComprobante(file, unitId) {
     calidad: 0.82,
   })
 
+  await verificarCuota(blob.size)
+
   const nombre = `${unitId}/${Date.now()}.${extension}`
 
   const { error } = await supabase.storage.from('receipts').upload(nombre, blob, {
@@ -171,8 +214,8 @@ export async function subirComprobante(file, unitId) {
 }
 
 /**
- * Genera una URL temporal para ver un comprobante.
- * El bucket es privado, así que no sirve getPublicUrl.
+ * Genera una URL temporal para ver un comprobante[cite: 3].
+ * El bucket es privado, así que no sirve getPublicUrl[cite: 3].
  */
 export async function urlComprobante(ruta, segundos = 3600) {
   if (!ruta) return null

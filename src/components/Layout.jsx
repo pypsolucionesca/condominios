@@ -3,12 +3,47 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Campana from './Campana'
 import LimiteError from './LimiteError'
+import CentroAyuda from './CentroAyuda'
 
 export default function Layout() {
-  const { perfil, esAdmin, esSupervisor, puedeOperar, cerrarSesion, unidades, esRestringido } =
+  const { perfil, condominio, esAdmin, esSupervisor, puedeOperar, cerrarSesion, unidades, esRestringido } =
     useAuth()
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [ayudaAbierta, setAyudaAbierta] = useState(false)
   const navigate = useNavigate()
+
+  const salir = async () => {
+    await cerrarSesion()
+    navigate('/login', { replace: true })
+  }
+
+  // =========================================================================
+  // MURO DE PAGO (BILLING LOCK)
+  // Si la empresa está suspendida, destruimos el layout y mostramos el candado
+  // =========================================================================
+  if (condominio?.subscription_status === 'suspendida') {
+    return (
+      <div className="login-container" style={{ padding: '20px' }}>
+        <div className="login-box" style={{ maxWidth: 500, textAlign: 'center' }}>
+          <span aria-hidden="true" style={{ fontSize: '4rem' }}>🔒</span>
+          <h2 style={{ color: '#ef4444', margin: '15px 0' }}>Servicio Suspendido</h2>
+          
+          <p style={{ color: 'var(--text-main)', marginBottom: 20, fontSize: '1.1rem' }}>
+            El acceso al sistema para <strong>{condominio.name}</strong> se encuentra actualmente restringido.
+          </p>
+          
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #f87171', color: '#991b1b', padding: '16px', borderRadius: '8px', textAlign: 'left', marginBottom: 24, fontSize: '0.95rem' }}>
+            <strong>Acción requerida:</strong> Por favor, póngase en contacto con <strong>P&P Soluciones</strong> para regularizar el estado de su cuenta y reactivar el acceso a la plataforma operativa.
+          </div>
+          
+          <button className="btn btn-secundario" onClick={salir} style={{ width: '100%', padding: '12px' }}>
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+  // =========================================================================
 
   let enlaces
   if (puedeOperar) {
@@ -53,18 +88,13 @@ export default function Layout() {
     ? `${unidades.length} apartamentos`
     : 'Residente'
 
-  const salir = async () => {
-    await cerrarSesion()
-    navigate('/login', { replace: true })
-  }
-
   return (
     <div className="app-container">
       <aside className="sidebar">
         <div className="sidebar-marca">
           <div className="sidebar-logo">
             <img
-              src="/logo.png"
+              src={condominio?.logo_url || "/logo.png"}
               alt=""
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
@@ -73,8 +103,8 @@ export default function Layout() {
             />
           </div>
           <div>
-            <strong>Gestión y Finanzas</strong>
-            <small>Condominio Vecinal C4</small>
+            <strong>{condominio?.name || 'Gestión y Finanzas'}</strong>
+            <small>P&P Admin</small>
           </div>
         </div>
 
@@ -89,6 +119,17 @@ export default function Layout() {
               {e.texto}
             </NavLink>
           ))}
+
+          {/* BOTÓN GLOBAL DE CENTRO DE AYUDA (ESCRITORIO) */}
+          <button
+            type="button"
+            className="sidebar-link"
+            onClick={() => setAyudaAbierta(true)}
+            style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+          >
+            <span aria-hidden="true">💡</span>
+            Ayuda y soporte
+          </button>
         </nav>
 
         <div className="sidebar-pie">
@@ -120,7 +161,7 @@ export default function Layout() {
         <div className="header-marca">
           <div className="header-logo">
             <img
-              src="/icon-192.png"
+              src={condominio?.logo_url || "/icon-192.png"}
               alt=""
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
@@ -129,8 +170,8 @@ export default function Layout() {
             />
           </div>
           <div>
-            <strong>Gestión y Finanzas</strong>
-            <small>Condominio Vecinal C4</small>
+            <strong>{condominio?.name || 'Gestión y Finanzas'}</strong>
+            <small>P&P Admin</small>
           </div>
         </div>
         <div className="header-derecha">
@@ -168,6 +209,19 @@ export default function Layout() {
                     {e.texto}
                   </NavLink>
                 ))}
+
+                {/* BOTÓN GLOBAL DE CENTRO DE AYUDA (MÓVIL) */}
+                <button
+                  type="button"
+                  className="menu-item menu-item-nav"
+                  onClick={() => {
+                    setMenuAbierto(false)
+                    setAyudaAbierta(true)
+                  }}
+                >
+                  <span aria-hidden="true">💡</span>
+                  Ayuda y soporte
+                </button>
               </nav>
 
               <div className="menu-separador" />
@@ -233,6 +287,11 @@ export default function Layout() {
           Menú
         </button>
       </nav>
+
+      <CentroAyuda 
+        abierto={ayudaAbierta} 
+        onCerrar={() => setAyudaAbierta(false)} 
+      />
     </div>
   )
 }

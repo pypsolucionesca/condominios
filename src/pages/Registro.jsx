@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase, mensajeError } from '../lib/supabase'
-import { Aviso } from '../components/UI'
+import { Aviso, IconoAyuda } from '../components/UI'
 
 export default function Registro() {
   const navigate = useNavigate()
   
-  const [form, setForm] = useState({ condoName: '', adminName: '', email: '', password: '' })
+  const [form, setForm] = useState({ condoName: '', adminName: '', email: '', password: '', aceptaTerminos: false })
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [exito, setExito] = useState(false)
@@ -18,6 +18,7 @@ export default function Registro() {
     if (!form.condoName.trim()) return setError('El nombre de la empresa es obligatorio.')
     if (!form.adminName.trim()) return setError('El nombre del administrador es obligatorio.')
     if (form.password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres.')
+    if (!form.aceptaTerminos) return setError('Debe aceptar los Términos y Condiciones para registrarse.')
 
     setCargando(true)
     try {
@@ -75,7 +76,10 @@ export default function Registro() {
             {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
 
             <div className="form-group">
-              <label>Nombre del Edificio o Empresa *</label>
+              <label>
+                Nombre del Edificio o Empresa *
+                <IconoAyuda texto="Nombre oficial con el que se identificarán los recibos, reportes y la base de datos de su organización." />
+              </label>
               <input
                 className="form-control"
                 value={form.condoName}
@@ -86,7 +90,10 @@ export default function Registro() {
             </div>
 
             <div className="form-group">
-              <label>Tu nombre (Administrador) *</label>
+              <label>
+                Tu nombre (Administrador) *
+                <IconoAyuda texto="Persona responsable de la gestión principal, control de pagos y configuración inicial de la plataforma." />
+              </label>
               <input
                 className="form-control"
                 value={form.adminName}
@@ -96,7 +103,10 @@ export default function Registro() {
             </div>
 
             <div className="form-group">
-              <label>Correo electrónico de acceso *</label>
+              <label>
+                Correo electrónico de acceso *
+                <IconoAyuda texto="Credencial principal de inicio de sesión y medio por el cual recibirá las confirmaciones de seguridad del sistema." />
+              </label>
               <input
                 type="email"
                 className="form-control"
@@ -107,7 +117,10 @@ export default function Registro() {
             </div>
 
             <div className="form-group">
-              <label>Contraseña *</label>
+              <label>
+                Contraseña *
+                <IconoAyuda texto="Debe tener una longitud mínima de 6 caracteres." />
+              </label>
               <input
                 type="password"
                 className="form-control"
@@ -115,6 +128,19 @@ export default function Registro() {
                 onChange={e => setForm({...form, password: e.target.value})}
                 placeholder="Mínimo 6 caracteres"
               />
+            </div>
+
+            <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '10px' }}>
+              <input
+                type="checkbox"
+                id="terminos"
+                checked={form.aceptaTerminos}
+                onChange={e => setForm({...form, aceptaTerminos: e.target.checked})}
+                style={{ marginTop: '4px' }}
+              />
+              <label htmlFor="terminos" style={{ fontSize: '0.85rem', lineHeight: '1.4', cursor: 'pointer', fontWeight: 'normal' }}>
+                He leído y acepto los <Link to="/terminos" target="_blank" style={{ color: 'var(--primary-color)' }}>Términos y Condiciones</Link> y la <Link to="/privacidad" target="_blank" style={{ color: 'var(--primary-color)' }}>Política de Privacidad</Link>.
+              </label>
             </div>
 
             <button 

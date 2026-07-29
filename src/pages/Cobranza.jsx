@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtFecha, fmtMesAno, etiqueta, hoy, normalizar } from '../lib/formato'
-import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador } from '../components/UI'
+import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, IconoAyuda } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import { DetalleAviso } from '../components/Detalles'
 
@@ -10,17 +10,14 @@ const MODOS = [
   {
     valor: 'fija',
     etiqueta: 'Cuota fija',
-    ayuda: 'Cada unidad paga su cuota configurada.',
   },
   {
     valor: 'alicuota',
     etiqueta: 'Repartir por alícuota',
-    ayuda: 'Se distribuye un monto total según los metros cuadrados de cada unidad.',
   },
   {
     valor: 'mixto',
     etiqueta: 'Cuota fija + derrama',
-    ayuda: 'Cuota habitual más un gasto extraordinario prorrateado por alícuota.',
   },
 ]
 
@@ -304,7 +301,6 @@ export default function Cobranza() {
 
   if (cargando) return <Cargador texto="Cargando avisos…" />
 
-  const modoActual = MODOS.find((m) => m.valor === formEmision.modo)
   const totalPrevia = (vistaPrevia?.detalle || []).reduce((s, d) => s + Number(d.total || 0), 0)
   const nuevos = (vistaPrevia?.detalle || []).filter((d) => !d.ya_tiene_aviso).length
 
@@ -553,7 +549,10 @@ export default function Cobranza() {
           </div>
 
           <div className="form-group">
-            <label>Modo de cobro *</label>
+            <label>
+              Modo de cobro *
+              <IconoAyuda texto="'Fija': cada unidad paga su cuota preestablecida. 'Alícuota': distribuye un gasto total según el tamaño de cada unidad. 'Mixto': suma ambos modos." />
+            </label>
             <select
               className="form-control"
               value={formEmision.modo}
@@ -568,12 +567,11 @@ export default function Cobranza() {
           </div>
         </div>
 
-        <p className="texto-ayuda">{modoActual?.ayuda}</p>
-
         {formEmision.modo !== 'fija' && (
           <div className="form-group">
             <label>
               {formEmision.modo === 'alicuota' ? 'Monto total a repartir *' : 'Derrama a repartir *'}
+              <IconoAyuda texto="Presupuesto total que se dividirá automáticamente entre todas las unidades basándose en su porcentaje de alícuota." />
             </label>
             <input
               type="number"
@@ -584,9 +582,6 @@ export default function Cobranza() {
               onChange={(e) => setFormEmision({ ...formEmision, presupuesto: e.target.value })}
               placeholder="0.00"
             />
-            <small className="texto-ayuda">
-              Se distribuye entre las unidades activas según su alícuota.
-            </small>
           </div>
         )}
 
@@ -708,13 +703,14 @@ export default function Cobranza() {
       {/* -------------------------------------------------- cargo individual */}
       <Panel
         abierto={panelCargo}
-        titulo="Cargo individual"
+        titulo={
+          <>
+            Cargo individual
+            <IconoAyuda texto="Se utiliza para aplicar deudas extraordinarias a una sola unidad en particular (como multas o consumos) sin afectar al resto del edificio." />
+          </>
+        }
         onCerrar={() => setPanelCargo(false)}
       >
-        <p className="texto-ayuda">
-          Para multas, consumos o cuotas extraordinarias que aplican a una sola unidad.
-        </p>
-
         <form onSubmit={crearCargo}>
           <div className="form-group">
             <label>Unidad *</label>

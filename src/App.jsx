@@ -5,6 +5,8 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Registro from './pages/Registro'
 import Restablecer from './pages/Restablecer'
+import Terminos from './pages/Terminos'
+import Privacidad from './pages/Privacidad'
 import MiCuenta from './pages/MiCuenta'
 import Unidades from './pages/Unidades'
 import PanelControl from './pages/PanelControl'
@@ -46,6 +48,14 @@ export default function App() {
             }
           />
           <Route
+          path="/registro"
+          element={
+            <RutaPublica>
+              <Registro />
+            </RutaPublica>
+          }
+        />
+          <Route
             path="/registro"
             element={
               <RutaPublica>
@@ -54,7 +64,8 @@ export default function App() {
             }
           />
           <Route path="/restablecer" element={<Restablecer />} />
-
+          <Route path="/terminos" element={<RutaPublica><Terminos /></RutaPublica>} />
+          <Route path="/privacidad" element={<RutaPublica><Privacidad /></RutaPublica>} />
           {/* Protegidas */}
           <Route
             element={

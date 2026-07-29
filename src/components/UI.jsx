@@ -368,3 +368,89 @@ export function SelectorImagen({ valorActual, onSeleccion, etiqueta = 'Imagen', 
     </div>
   )
 }
+
+/** 
+ * Ícono flotante de ayuda contextual.
+ * Al pasar el mouse o hacer clic, muestra un pequeño cuadro de texto.
+ */
+export function IconoAyuda({ texto }) {
+  const [visible, setVisible] = useState(false)
+  const ref = useRef(null)
+
+  // Cierra el tooltip si se hace clic fuera de él (ideal para móviles)
+  useEffect(() => {
+    const handleClickFuera = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setVisible(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickFuera)
+    return () => document.removeEventListener('mousedown', handleClickFuera)
+  }, [])
+
+  return (
+    <div 
+      className="ayuda-contextual-contenedor" 
+      ref={ref}
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+      onClick={() => setVisible(!visible)}
+      style={{ display: 'inline-block', position: 'relative', marginLeft: '6px', verticalAlign: 'middle' }}
+    >
+      <span 
+        className="ayuda-icono"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '16px',
+          height: '16px',
+          borderRadius: '50%',
+          backgroundColor: '#e5e7eb',
+          color: '#4b5563',
+          fontSize: '11px',
+          fontWeight: 'bold',
+          cursor: 'help'
+        }}
+      >
+        ?
+      </span>
+
+      {visible && (
+        <div 
+          className="ayuda-tooltip"
+          style={{
+            position: 'absolute',
+            bottom: '120%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#1f2937',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontSize: '0.85rem',
+            width: 'max-content',
+            maxWidth: '250px',
+            whiteSpace: 'normal',
+            zIndex: 1000,
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+            textAlign: 'left',
+            lineHeight: '1.4'
+          }}
+        >
+          {texto}
+          {/* Flecha inferior del tooltip */}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            marginLeft: '-5px',
+            borderWidth: '5px',
+            borderStyle: 'solid',
+            borderColor: '#1f2937 transparent transparent transparent'
+          }} />
+        </div>
+      )}
+    </div>
+  )
+}
