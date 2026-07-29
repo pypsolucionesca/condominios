@@ -31,7 +31,7 @@ const TIPOS_CARGO = [
 const mesActual = () => new Date().toISOString().slice(0, 7)
 
 export default function Cobranza() {
-  const { perfil, condominio } = useAuth()
+  const { perfil, condominio, esAdmin } = useAuth()
 
   const [avisos, setAvisos] = useState([])
   const [unidades, setUnidades] = useState([])
@@ -40,6 +40,7 @@ export default function Cobranza() {
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [notificando, setNotificando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState('')
   const [busqueda, setBusqueda] = useState('')
 
@@ -259,6 +260,31 @@ export default function Cobranza() {
     })
   }
 
+  const ejecutarNotificacionMasiva = async () => {
+    setError(null)
+    setAviso(null)
+    setNotificando(true)
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const res = await supabase.functions.invoke('notify-debtors', {
+        body: { condominium_id: perfil.condominium_id },
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      })
+
+      if (res.error) throw new Error(res.error.message || 'Error al ejecutar la función de notificación')
+      if (res.data?.error) throw new Error(res.data.error)
+      
+      setAviso(`Se han enviado notificaciones y correos a ${res.data.usuariosNotificados || 0} residentes morosos de forma exitosa.`)
+    } catch (err) {
+      setError(mensajeError(err))
+    } finally {
+      setNotificando(false)
+      setConfirmacion(null)
+    }
+  }
+
   const descargarAviso = async (a) => {
     setError(null)
     try {
@@ -353,6 +379,23 @@ export default function Cobranza() {
           </p>
         </div>
         <div className="grupo-botones">
+          {esAdmin && (
+            <button 
+              className="btn btn-secundario btn-accion" 
+              onClick={() => {
+                setConfirmacion({
+                  titulo: 'Notificar a residentes morosos',
+                  mensaje: `El sistema calculará la deuda total de cada residente con avisos pendientes y les enviará un recordatorio automático por correo electrónico y notificación push. ¿Desea proceder?`,
+                  textoConfirmar: 'Sí, enviar recordatorios',
+                  accion: ejecutarNotificacionMasiva,
+                })
+              }}
+              disabled={notificando || pendientes.length === 0}
+              style={{ backgroundColor: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5' }}
+            >
+              {notificando ? 'Enviando...' : '🔔 Notificar morosos'}
+            </button>
+          )}
           <button className="btn btn-secundario btn-accion" onClick={() => setPanelCargo(true)}>
             Cargo individual
           </button>

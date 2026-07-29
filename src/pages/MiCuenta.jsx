@@ -205,11 +205,11 @@ export default function MiCuenta() {
   return (
     <>
       <div className="card">
-        <div className="card-header-flex" style={{ alignItems: 'center' }}>
-          <div>
-            <h2 style={{ margin: 0 }}>Hola, {perfil?.full_name || 'residente'}</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 auto', minWidth: '200px' }}>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: '1.4rem', lineHeight: '1.2' }}>Hola, {perfil?.full_name || 'residente'}</h2>
             {tasaHoy?.tasa && (
-              <span style={{ display: 'inline-block', marginTop: '6px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 500 }}>
+              <span style={{ display: 'inline-block', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 500 }}>
                 Tasa del día: Bs. {fmtNumero(tasaHoy.tasa)}
               </span>
             )}
@@ -218,7 +218,7 @@ export default function MiCuenta() {
           <button 
             className="btn btn-primary" 
             onClick={() => setPanelCuentas(true)}
-            style={{ whiteSpace: 'nowrap' }}
+            style={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}
           >
             🏦 Datos de Pago
           </button>
@@ -242,27 +242,34 @@ export default function MiCuenta() {
           </div>
         )}
 
-        <div className={`saldo-destacado ${saldo > 0 ? 'saldo-deuda' : 'saldo-favor'}`} style={{ marginTop: '20px' }}>
-          <span className="saldo-etiqueta">
-            {saldo > 0 ? 'Saldo pendiente' : saldo < 0 ? 'Saldo a favor' : 'Estado'}
-          </span>
-          <strong className="saldo-monto">
-            {saldo === 0 ? 'Solvente' : fmtUSD(Math.abs(saldo))}
-          </strong>
-          <span className="saldo-unidad">Apartamento {unidad?.code}</span>
-          {saldo < 0 && (
-            <span className="saldo-nota">
-              Este monto se aplicará automáticamente a su próximo recibo.
+        {/* DISEÑO COMPACTO DEL SALDO */}
+        <div className={`saldo-destacado ${saldo > 0 ? 'saldo-deuda' : 'saldo-favor'}`} style={{ marginTop: '20px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ textAlign: 'left' }}>
+            <span className="saldo-etiqueta" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem' }}>
+              {saldo > 0 ? 'Saldo pendiente' : saldo < 0 ? 'Saldo a favor' : 'Estado'}
             </span>
-          )}
+            <span className="saldo-unidad" style={{ fontSize: '0.85rem', margin: 0, fontWeight: 500 }}>
+              Apto. {unidad?.code}
+            </span>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <strong className="saldo-monto" style={{ fontSize: '1.6rem', margin: 0, lineHeight: 1 }}>
+              {saldo === 0 ? 'Solvente' : fmtUSD(Math.abs(saldo))}
+            </strong>
+          </div>
         </div>
+        {saldo < 0 && (
+          <small className="texto-ayuda bloque" style={{ marginTop: '8px', textAlign: 'center' }}>
+            Este saldo a favor se aplicará automáticamente a su próximo recibo.
+          </small>
+        )}
       </div>
 
       {!cargando && (
         <div className="barra-filtros">
           <input
             className="form-control"
-            placeholder="Buscar por concepto, número de aviso, referencia o estado…"
+            placeholder="Buscar por concepto, número de aviso o referencia…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
           />
@@ -381,17 +388,56 @@ export default function MiCuenta() {
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientosVisibles.map((m, i) => (
-                      <tr key={i}>
-                        <td>{fmtFecha(m.entry_date)}</td>
-                        <td>{m.description}</td>
-                        <td className="der">{Number(m.debit_usd) > 0 ? fmtUSD(m.debit_usd) : '—'}</td>
-                        <td className="der">{Number(m.credit_usd) > 0 ? fmtUSD(m.credit_usd) : '—'}</td>
-                        <td className="der">
-                          <strong>{fmtUSD(m.running_balance)}</strong>
-                        </td>
-                      </tr>
-                    ))}
+                    {movimientosVisibles.map((m, i) => {
+                      let invId = m.invoice_id
+                      let payId = m.payment_id
+
+                      // Fallback Inteligente: Enlazar leyendo el texto si no vienen IDs
+                      if (!invId && !payId) {
+                        const desc = m.description?.toLowerCase() || ''
+                        
+                        if (desc.includes('aviso')) {
+                          const av = avisos.find(a => {
+                            // 1. Buscar por número explícito si existe
+                            if (a.invoice_number && m.description.includes(String(a.invoice_number))) return true
+                            // 2. Buscar por el período (MM/YYYY) como aparece en tu BD
+                            if (a.billing_periods?.period) {
+                              const [año, mes] = a.billing_periods.period.split('-')
+                              if (m.description.includes(`${mes}/${año}`)) return true
+                            }
+                            return false
+                          })
+                          if (av) invId = av.id
+                        } else if (desc.includes('pago') || desc.includes('ref')) {
+                          const pag = pagos.find(p => p.reference && m.description.includes(p.reference))
+                          if (pag) payId = pag.id
+                        }
+                      }
+
+                      const esClicleable = Boolean(invId || payId)
+
+                      return (
+                        <tr 
+                          key={i} 
+                          className={esClicleable ? 'fila-clicable' : ''}
+                          onClick={() => {
+                            if (invId) setAvisoDetalle(invId)
+                            else if (payId) setPagoDetalle(payId)
+                          }}
+                        >
+                          <td>{fmtFecha(m.entry_date)}</td>
+                          <td>
+                            {m.description}
+                            {esClicleable && <small className="texto-ayuda" style={{marginLeft: '8px', fontSize: '0.75rem'}}>Ver detalle &rarr;</small>}
+                          </td>
+                          <td className="der">{Number(m.debit_usd) > 0 ? fmtUSD(m.debit_usd) : '—'}</td>
+                          <td className="der">{Number(m.credit_usd) > 0 ? fmtUSD(m.credit_usd) : '—'}</td>
+                          <td className="der">
+                            <strong>{fmtUSD(m.running_balance)}</strong>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -432,16 +478,16 @@ export default function MiCuenta() {
               )}
 
               {c.payment_link && (
-                <div style={{ marginTop: '16px', backgroundColor: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-                  <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#166534', textAlign: 'center' }}>
+                <div style={{ marginTop: '16px', backgroundColor: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                  <strong style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#1e3a8a', textAlign: 'center' }}>
                     ¿Tienes la app del banco? Solo toca el siguiente link:
                   </strong>
                   <a 
                     href={c.payment_link.startsWith('http') ? c.payment_link : `https://${c.payment_link}`} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="btn btn-secundario" 
-                    style={{ width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none', backgroundColor: '#22c55e', color: '#ffffff', borderColor: '#16a34a', fontWeight: 'bold' }}
+                    className="btn btn-primary" 
+                    style={{ width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none', fontWeight: 'bold' }}
                   >
                     🔗 Pagar directo en la App
                   </a>
