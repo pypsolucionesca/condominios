@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="es">
-  <head><meta charset="UTF-8"/><meta name="color-scheme" content="light">
+  <head>
+    <meta charset="UTF-8"/>
+    <meta name="color-scheme" content="light">
     <meta name="theme-color" content="#0f172a">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -9,6 +11,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Condominio C4">
     <meta name="description" content="Sistema de administración y finanzas del Condominio Vecinal C4">
-    <meta name="viewport" content="width=device-width,initial-scale=1"/><title>Condominio Vecinal C4 · Gestión y Finanzas</title></head>
-  <body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Condominio Vecinal C4 · Gestión y Finanzas</title>
+    
+    <!-- Evitar caché estricto del archivo raíz -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <!-- Script de auto-recuperación si falla la carga de un módulo -->
+    <script>
+      window.addEventListener('vite:preloadError', () => {
+        window.location.reload();
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
