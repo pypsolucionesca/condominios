@@ -1,6 +1,6 @@
 {
-  "name": "Condominio Vecinal C4 · Gestión y Finanzas",
-  "short_name": "Condominio C4",
+  "name": "PyP Condominios · Gestión y Finanzas",
+  "short_name": "PyP Condominios",
   "description": "Sistema de administración y finanzas del condominio: estado de cuenta, pagos y transparencia de gastos.",
   "start_url": "/",
   "scope": "/",

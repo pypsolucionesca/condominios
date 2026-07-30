@@ -7,6 +7,7 @@ import { Indicador, Aviso, Vacio, Cargador, Panel } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import GastosPorCategoria from '../components/GastosPorCategoria'
 import { DetalleGasto } from '../components/Detalles'
+import LibroCuenta from '../components/LibroCuenta'
 
 export default function PanelControl() {
   const { perfil, esAdmin, puedeOperar, condominio } = useAuth()
@@ -18,6 +19,7 @@ export default function PanelControl() {
   const [error, setError] = useState(null)
   const [panelInforme, setPanelInforme] = useState(false)
   const [gastoDetalle, setGastoDetalle] = useState(null)
+  const [libroCuenta, setLibroCuenta] = useState(null)
   
   const [rango, setRango] = useState(() => {
     const d = new Date()
@@ -350,7 +352,11 @@ export default function PanelControl() {
         ) : (
           <div className="grid-cuentas">
             {datos.cuentas.map((c) => (
-              <div key={c.id} className="tarjeta-cuenta">
+              <div 
+                key={c.id} 
+                className="tarjeta-cuenta clicable" 
+                onClick={() => setLibroCuenta(c.id)}
+              >
                 <div className="cuenta-cabecera">
                   <strong>{c.nombre}</strong>
                   <span className="chip">{etiqueta(c.tipo)}</span>
@@ -561,6 +567,12 @@ export default function PanelControl() {
         abierto={Boolean(gastoDetalle)}
         onCerrar={() => setGastoDetalle(null)}
         onCambio={cargar}
+      />
+
+      <LibroCuenta
+        cuentaId={libroCuenta}
+        abierto={Boolean(libroCuenta)}
+        onCerrar={() => setLibroCuenta(null)}
       />
     </>
   )

@@ -24,7 +24,10 @@ export default function Configuracion() {
   const [salud, setSalud] = useState(null)
   const [actualizando, setActualizando] = useState(false)
   const [guardando, setGuardando] = useState(false)
-  const [logoArchivo, setLogoArchivo] = useState(null)
+  
+  // Cambiamos null por undefined para detectar cuando el usuario presiona "Quitar" explícitamente
+  const [logoArchivo, setLogoArchivo] = useState(undefined)
+  
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [unidadesDirector, setUnidadesDirector] = useState([])
@@ -145,9 +148,15 @@ export default function Configuracion() {
     setGuardando(true)
     try {
       let logoUrl = condominio?.logo_url || null
-      if (logoArchivo) {
-        const res = await subirLogoCondominio(logoArchivo, perfil.condominium_id)
-        logoUrl = res.url
+      
+      // Lógica actualizada para permitir el borrado explícito del logo
+      if (logoArchivo !== undefined) {
+        if (logoArchivo) {
+          const res = await subirLogoCondominio(logoArchivo, perfil.condominium_id)
+          logoUrl = res.url
+        } else {
+          logoUrl = null // El usuario presionó Quitar
+        }
       }
 
       const { error: err } = await supabase
@@ -172,7 +181,7 @@ export default function Configuracion() {
       if (err) throw err
 
       setAviso('Configuración guardada.')
-      setLogoArchivo(null)
+      setLogoArchivo(undefined)
       recargarPerfil()
     } catch (err) {
       setError(mensajeError(err))
@@ -357,7 +366,6 @@ export default function Configuracion() {
     }
   }
 
-  // Cálculos visuales de la barra de progreso
   const porcentajeUso = Math.min((usoStorage.usado / usoStorage.limite) * 100, 100)
   const colorBarra = porcentajeUso > 90 ? '#ef4444' : porcentajeUso > 75 ? '#f59e0b' : '#3b82f6'
 

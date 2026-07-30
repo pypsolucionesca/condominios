@@ -19,7 +19,6 @@ export default function Layout() {
 
   // =========================================================================
   // MURO DE PAGO (BILLING LOCK)
-  // Si la empresa está suspendida, destruimos el layout y mostramos el candado
   // =========================================================================
   if (condominio?.subscription_status === 'suspendida') {
     return (
@@ -58,7 +57,6 @@ export default function Layout() {
       { to: '/pagos', icono: '💵', texto: 'Pagos' },
       { to: '/tesoreria', icono: '🏦', texto: 'Tesorería' }
     )
-    // Gobierno: solo el administrador
     if (esAdmin) {
       enlaces.push({ to: '/exoneraciones', icono: '🤲', texto: 'Exoneraciones' })
       enlaces.push({ to: '/usuarios', icono: '👥', texto: 'Usuarios' })
@@ -91,20 +89,82 @@ export default function Layout() {
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <div className="sidebar-marca">
-          <div className="sidebar-logo">
+        
+        {/* CABECERA DE MARCA ESCRITORIO */}
+        <div 
+          className="sidebar-marca" 
+          style={{ 
+            display: 'flex',
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            gap: '12px', 
+            padding: '10px 12px 14px 12px',
+            borderBottom: '1px solid rgba(255,255,255,0.08)'
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', width: '100%' }}>
             <img
-              src={condominio?.logo_url || "/logo.png"}
-              alt=""
+              src="/logo.png"
+              alt="Isotipo PyP"
+              style={{ 
+                height: '80px', 
+                width: 'auto', 
+                objectFit: 'contain',
+                filter: 'drop-shadow(0px 2px 6px rgba(0,0,0,0.4))'
+              }}
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
-                e.currentTarget.parentNode.textContent = '🏢'
               }}
             />
+            
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', lineHeight: '1.05', marginTop: '2px' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
+                PyP <span style={{ color: '#f97316' }}>Condominios</span>
+              </span>
+              <span style={{ fontSize: '0.62rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px', fontWeight: '600' }}>
+                Sistema de Gestión
+              </span>
+            </div>
           </div>
-          <div>
-            <strong>{condominio?.name || 'Gestión y Finanzas'}</strong>
-            <small>P&P Admin</small>
+          
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '10px', 
+              width: '100%', 
+              padding: '8px 10px', 
+              backgroundColor: 'rgba(255,255,255,0.06)', 
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.05)'
+            }}
+          >
+            {condominio?.logo_url ? (
+              <img
+                src={condominio.logo_url}
+                alt=""
+                style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              />
+            ) : (
+              <span style={{ fontSize: '1.1rem', flexShrink: 0 }} aria-hidden="true">🏢</span>
+            )}
+            <div style={{ overflow: 'hidden', width: '100%' }}>
+              <strong 
+                style={{ 
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  fontSize: '0.8rem', 
+                  color: '#f8fafc', 
+                  lineHeight: '1.25',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  wordBreak: 'break-word'
+                }}
+              >
+                {condominio?.name || 'Sin condominio'}
+              </strong>
+            </div>
           </div>
         </div>
 
@@ -120,7 +180,6 @@ export default function Layout() {
             </NavLink>
           ))}
 
-          {/* BOTÓN GLOBAL DE CENTRO DE AYUDA (ESCRITORIO) */}
           <button
             type="button"
             className="sidebar-link"
@@ -140,15 +199,15 @@ export default function Layout() {
               <span className="usuario-avatar-vacio" aria-hidden="true">👤</span>
             )}
             <div style={{ minWidth: 0 }}>
-            <strong>{perfil?.full_name}</strong>
-            <small>
-              {(esAdmin || esSupervisor) && (
-                <span className={`chip ${esAdmin ? 'chip-admin' : 'chip-supervisor'}`}>
-                  {descripcionRol}
-                </span>
-              )}
-              {!esAdmin && !esSupervisor && descripcionRol}
-            </small>
+              <strong>{perfil?.full_name}</strong>
+              <small>
+                {(esAdmin || esSupervisor) && (
+                  <span className={`chip ${esAdmin ? 'chip-admin' : 'chip-supervisor'}`}>
+                    {descripcionRol}
+                  </span>
+                )}
+                {!esAdmin && !esSupervisor && descripcionRol}
+              </small>
             </div>
           </NavLink>
           <button className="btn-salir" onClick={salir}>
@@ -157,28 +216,33 @@ export default function Layout() {
         </div>
       </aside>
 
-      <header className="header-movil">
-        <div className="header-marca">
-          <div className="header-logo">
-            <img
-              src={condominio?.logo_url || "/icon-192.png"}
-              alt=""
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-                e.currentTarget.parentNode.textContent = '🏢'
-              }}
-            />
-          </div>
-          <div>
-            <strong>{condominio?.name || 'Gestión y Finanzas'}</strong>
-            <small>P&P Admin</small>
+      {/* HEADER MÓVIL AMPLIA Y DESTACADO */}
+      <header className="header-movil" style={{ padding: '12px 16px' }}>
+        <div className="header-marca" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img
+            src="/logo.png" 
+            alt="PyP Condominios"
+            style={{ height: '40px', width: 'auto', objectFit: 'contain', flexShrink: 0 }}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <strong style={{ fontSize: '1.1rem', lineHeight: '1.1', color: '#ffffff', fontWeight: '800' }}>
+              PyP <span style={{ color: '#f97316' }}>Condominios</span>
+            </strong>
+            <small style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '220px', marginTop: '2px' }}>
+              {condominio?.name}
+            </small>
           </div>
         </div>
+        
         <div className="header-derecha">
           <LimiteError silencioso>
             <Campana />
           </LimiteError>
         </div>
+        
         {menuAbierto && (
           <>
             <div className="menu-fondo" onClick={() => setMenuAbierto(false)} />
@@ -210,7 +274,6 @@ export default function Layout() {
                   </NavLink>
                 ))}
 
-                {/* BOTÓN GLOBAL DE CENTRO DE AYUDA (MÓVIL) */}
                 <button
                   type="button"
                   className="menu-item menu-item-nav"
