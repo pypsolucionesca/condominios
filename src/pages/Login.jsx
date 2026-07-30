@@ -55,21 +55,31 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-logo">
+          <div className="login-logo" style={{ marginBottom: '12px' }}>
             <img
-              src="/logo.png"
-              alt=""
+              src="/logo-login.png"
+              alt="PyP Condominios"
+              style={{
+                height: '85px',
+                width: 'auto',
+                objectFit: 'contain',
+                margin: '0 auto',
+                display: 'block'
+              }}
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
-                e.currentTarget.parentNode.textContent = '🏢'
               }}
             />
           </div>
-          <h1>Sistema de Gestión y Finanzas</h1>
-          <p>Condominio Vecinal C4 · Juan Pablo II</p>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+            PyP <span style={{ color: '#f97316' }}>Condominios</span>
+          </h1>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, fontWeight: '500' }}>
+            Sistema de Gestión y Finanzas
+          </p>
         </div>
 
-        <form onSubmit={enviar} noValidate>
+        <form onSubmit={enviar} noValidate style={{ marginTop: '24px' }}>
           <div className="form-group">
             <label htmlFor="email">Correo electrónico</label>
             <input
@@ -142,10 +152,10 @@ export default function Login() {
           Si no tiene credenciales, solicítelas a la administración.
         </p>
 
-        {/* NUEVO PUENTE AL REGISTRO SaaS */}
+        {/* PUENTE AL REGISTRO SaaS */}
         <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e5e7eb', textAlign: 'center' }}>
           <small style={{ color: '#4b5563', display: 'block', marginBottom: '12px' }}>
-            ¿Desea implementar P&P Admin en su empresa o condominio?
+            ¿Desea implementar PyP Condominios en su empresa o condominio?
           </small>
           <Link 
             to="/registro" 
