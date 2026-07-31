@@ -55,7 +55,20 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-logo" style={{ marginBottom: '2px' }}>
+          
+          {/* CONTENEDOR LIBERADO DE RESTRICCIONES CSS */}
+          <div 
+            className="login-logo" 
+            style={{ 
+              marginBottom: '2px', 
+              height: 'auto', 
+              minHeight: '130px', 
+              overflow: 'visible',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+          >
             <img
               src="/logo-login.png"
               alt="PyP Condominios"
@@ -63,7 +76,6 @@ export default function Login() {
                 height: '130px',
                 width: 'auto',
                 objectFit: 'contain',
-                margin: '0 auto',
                 display: 'block'
               }}
               onError={(e) => {
@@ -71,6 +83,7 @@ export default function Login() {
               }}
             />
           </div>
+          
           <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
             PyP <span style={{ color: '#f97316' }}>Condominios</span>
           </h1>
