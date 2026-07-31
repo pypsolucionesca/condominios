@@ -9,7 +9,7 @@ export default function Privacidad() {
 
         <div style={{ textAlign: 'left', fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <p>
-            En <strong>P&P Soluciones</strong> valoramos y protegemos la privacidad de los datos de nuestros usuarios y de los residentes que hacen vida en los condominios administrados mediante P&P Admin.
+            En <strong>P&P Soluciones</strong> valoramos y protegemos la privacidad de los datos de nuestros usuarios y de los residentes que hacen vida en los condominios administrados mediante <strong>PyP Condominios</strong>.
           </p>
 
           <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>1. Información que Recopilamos</h3>
@@ -25,6 +25,11 @@ export default function Privacidad() {
           <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>3. Seguridad de los Datos</h3>
           <p>
             Implementamos protocolos de seguridad estándar de la industria (encriptación y políticas de acceso restringido por filas en bases de datos) para salvaguardar la información contra accesos no autorizados.
+          </p>
+
+          <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>4. Acceso y Responsabilidad de Terceros</h3>
+          <p>
+            Usted comprende que la junta de condominio y/o la administración de su residencia tienen acceso legítimo a sus datos financieros y de contacto dentro de la plataforma para ejercer la gestión de cobranza. <strong>P&P Soluciones no es responsable</strong> del manejo, distribución o uso indebido que dichos administradores den a esta información fuera del ecosistema del software.
           </p>
 
           <div style={{ marginTop: 30, textAlign: 'center', borderTop: '1px solid #e5e7eb', paddingTop: 20 }}>

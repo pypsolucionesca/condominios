@@ -22,7 +22,7 @@ export default function Registro() {
 
     setCargando(true)
     try {
-      // Inyectamos el payload oculto (options.data) para activar el Trigger SQL de P&P Admin
+      // Inyectamos el payload oculto (options.data) para activar el Trigger SQL
       const { data, error: err } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,
@@ -36,11 +36,9 @@ export default function Registro() {
 
       if (err) throw err
 
-      // Si tienes activada la confirmación de correos en Supabase, la sesión vendrá nula
       if (data?.user && data.session === null) {
         setExito(true)
       } else {
-        // Si la confirmación de correo está apagada, entra directo al sistema
         navigate('/panel')
       }
     } catch (err) {
@@ -53,9 +51,38 @@ export default function Registro() {
   return (
     <div className="login-container">
       <div className="login-box" style={{ maxWidth: 450 }}>
-        <div className="login-logo" style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <span aria-hidden="true" style={{ fontSize: '3rem' }}>🏢</span>
-          <h2 style={{ margin: '10px 0 0 0', color: 'var(--primary-color)' }}>P&P Admin</h2>
+        
+        {/* CABECERA ACTUALIZADA CON LOGO Y MARCA */}
+        <div className="login-brand" style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <div 
+            className="login-logo" 
+            style={{ 
+              marginBottom: '8px', 
+              height: 'auto', 
+              minHeight: '100px', 
+              overflow: 'visible',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+          >
+            <img
+              src="/logo-login.png"
+              alt="PyP Condominios"
+              style={{
+                height: '100px',
+                width: 'auto',
+                objectFit: 'contain',
+                display: 'block'
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+              }}
+            />
+          </div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+            PyP <span style={{ color: '#f97316' }}>Condominios</span>
+          </h2>
         </div>
         
         <h3 style={{ textAlign: 'center', marginBottom: 20, color: 'var(--text-main)' }}>Registrar nueva empresa</h3>

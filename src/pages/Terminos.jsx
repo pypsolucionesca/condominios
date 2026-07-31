@@ -9,22 +9,27 @@ export default function Terminos() {
 
         <div style={{ textAlign: 'left', fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <p>
-            Bienvenido a <strong>P&P Admin</strong>. Al registrar una empresa o condominio en nuestra plataforma (a través de condominios.pypcloud.com o dominios asociados), usted acepta cumplir y estar sujeto a los siguientes términos y condiciones de uso.
+            Bienvenido a <strong>PyP Condominios</strong>. Al registrar una empresa o condominio en nuestra plataforma, usted acepta cumplir y estar sujeto a los siguientes términos y condiciones de uso.
           </p>
 
           <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>1. Concesión de Licencia</h3>
           <p>
-            P&P Soluciones le otorga una licencia temporal, revocable, no exclusiva e intransferible para utilizar el software como una herramienta de gestión administrativa y contable. El código fuente, la interfaz y la marca son propiedad intelectual exclusiva de P&P Soluciones. Queda prohibida su reventa, ingeniería inversa o modificación.
+            <strong>P&P Soluciones</strong> le otorga una licencia temporal, revocable, no exclusiva e intransferible para utilizar el software como una herramienta de gestión administrativa y contable (SaaS). El código fuente, la interfaz y la marca son propiedad intelectual exclusiva de P&P Soluciones. Queda prohibida su reventa, ingeniería inversa o modificación.
           </p>
 
           <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>2. Exoneración de Responsabilidad Financiera</h3>
           <p>
-            P&P Admin es una herramienta tecnológica de registro y cálculo automatizado. <strong>P&P Soluciones no asume ninguna responsabilidad legal o financiera</strong> por errores humanos en la carga de datos por parte del administrador, diferencias en los cálculos derivados de variaciones en las tasas cambiarias oficiales externas (como el BCV), ni por disputas legales internas entre copropietarios o juntas de condominio.
+            PyP Condominios es una herramienta tecnológica de registro y cálculo automatizado. <strong>P&P Soluciones no asume ninguna responsabilidad legal o financiera</strong> por errores humanos en la carga de datos por parte del administrador, diferencias en los cálculos derivados de variaciones en las tasas cambiarias oficiales, el mal manejo de los fondos recaudados, ni por disputas legales internas entre copropietarios o juntas de condominio.
           </p>
 
           <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>3. Disponibilidad del Servicio</h3>
           <p>
-            Nos esforzamos por mantener la plataforma operativa el 100% del tiempo utilizando infraestructura en la nube de alta disponibilidad. Sin embargo, no garantizamos que el servicio esté libre de interrupciones temporales por labores de mantenimiento o fallas ajenas a nuestro control.
+            Nos esforzamos por mantener la plataforma operativa utilizando infraestructura en la nube de alta disponibilidad. Sin embargo, no garantizamos que el servicio esté libre de interrupciones temporales por labores de mantenimiento, actualizaciones o fallas en servidores de terceros ajenas a nuestro control.
+          </p>
+
+          <h3 style={{ fontSize: '1.1rem', marginTop: 10 }}>4. Suspensión y Terminación</h3>
+          <p>
+            P&P Soluciones se reserva el derecho de suspender o restringir el acceso a la plataforma en caso de impagos prolongados de la suscripción del servicio, violación de estos términos, o la realización de actividades ilícitas a través del sistema.
           </p>
 
           <div style={{ marginTop: 30, textAlign: 'center', borderTop: '1px solid #e5e7eb', paddingTop: 20 }}>

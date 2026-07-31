@@ -54,14 +54,6 @@ export default function App() {
               <Registro />
             </RutaPublica>
           }
-        />
-          <Route
-            path="/registro"
-            element={
-              <RutaPublica>
-                <Registro />
-              </RutaPublica>
-            }
           />
           <Route path="/restablecer" element={<Restablecer />} />
           <Route path="/terminos" element={<RutaPublica><Terminos /></RutaPublica>} />
