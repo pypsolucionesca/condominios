@@ -55,12 +55,12 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-logo" style={{ marginBottom: '12px' }}>
+          <div className="login-logo" style={{ marginBottom: '2px' }}>
             <img
               src="/logo-login.png"
               alt="PyP Condominios"
               style={{
-                height: '85px',
+                height: '130px',
                 width: 'auto',
                 objectFit: 'contain',
                 margin: '0 auto',
