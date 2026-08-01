@@ -108,9 +108,11 @@ html, body {
   display: flex; flex-direction: column;
   padding: 24px 0;
   z-index: 100;
+  overflow: hidden; /* el scroll lo maneja .sidebar-nav; marca y pie quedan fijos */
 }
 
 .sidebar-marca {
+  flex-shrink: 0;
   display: flex; align-items: center; gap: 12px;
   padding: 0 22px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -124,7 +126,13 @@ html, body {
 .sidebar-marca strong { display: block; font-size: 0.95rem; }
 .sidebar-marca small { display: block; font-size: 0.72rem; opacity: 0.7; }
 
-.sidebar-nav { flex: 1; padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+.sidebar-nav {
+  flex: 1;
+  min-height: 0; /* permite que flex encoja el nav y active su propio scroll */
+  overflow-y: auto; /* los enlaces scrollean aquí; el botón Cerrar sesión queda siempre visible abajo */
+  padding: 18px 12px;
+  display: flex; flex-direction: column; gap: 4px;
+}
 .sidebar-link {
   display: flex; align-items: center; gap: 12px;
   padding: 13px 16px;
@@ -137,7 +145,7 @@ html, body {
 .sidebar-link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
 .sidebar-link.activo { background: rgba(56, 189, 248, 0.15); color: var(--sidebar-activo); font-weight: 600; }
 
-.sidebar-pie { padding: 18px 22px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.sidebar-pie { flex-shrink: 0; padding: 18px 22px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .usuario-info { margin-bottom: 12px; }
 .usuario-info strong {
   display: block; font-size: 0.88rem;
