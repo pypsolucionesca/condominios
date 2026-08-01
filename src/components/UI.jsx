@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { comprimirImagen, formatearTamano } from '../lib/imagenes'
+import { filtrarSugerencias } from '../lib/formato'
 
 /** Panel lateral para formularios. Evita perder el listado de fondo. */
 export function Panel({ abierto, titulo, onCerrar, children, ancho = 480 }) {
@@ -289,10 +290,20 @@ export function SelectorImagen({ valorActual, onSeleccion, etiqueta = 'Imagen', 
   const [info, setInfo] = useState(null)
   const [error, setError] = useState(null)
   const inputRef = useRef(null)
+  // Rastrea la URL temporal de la vista previa para poder liberarla y no
+  // acumular blobs en memoria si el usuario prueba varias imágenes.
+  const objectUrlRef = useRef(null)
 
   useEffect(() => {
     setVista(valorActual || null)
   }, [valorActual])
+
+  // Al desmontar, liberar cualquier vista previa pendiente.
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+    }
+  }, [])
 
   const elegir = async (e) => {
     const file = e.target.files?.[0]
@@ -312,7 +323,12 @@ export function SelectorImagen({ valorActual, onSeleccion, etiqueta = 'Imagen', 
     try {
       const res = await comprimirImagen(file, { maxAncho: 512, maxAlto: 512 })
 
-      setVista(URL.createObjectURL(res.blob))
+      // Liberar la vista previa anterior antes de crear la nueva.
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+      const nuevaUrl = URL.createObjectURL(res.blob)
+      objectUrlRef.current = nuevaUrl
+
+      setVista(nuevaUrl)
       setInfo(
         `${formatearTamano(res.tamanoOriginal)} → ${formatearTamano(res.tamanoFinal)} (WebP)`
       )
@@ -344,6 +360,10 @@ export function SelectorImagen({ valorActual, onSeleccion, etiqueta = 'Imagen', 
               type="button"
               className="btn-mini btn-secundario"
               onClick={() => {
+                if (objectUrlRef.current) {
+                  URL.revokeObjectURL(objectUrlRef.current)
+                  objectUrlRef.current = null
+                }
                 setVista(null)
                 setInfo(null)
                 onSeleccion(null)
@@ -450,6 +470,137 @@ export function IconoAyuda({ texto }) {
             borderColor: '#1f2937 transparent transparent transparent'
           }} />
         </div>
+      )}
+    </div>
+  )
+}
+/**
+ * Campo de texto con autocompletado tolerante a acentos y errores de tipeo.
+ *
+ * Pensado para conceptos que se repiten (gastos recurrentes, categorías,
+ * proveedores): el usuario escribe y ve sugerencias de lo que ya usó antes,
+ * aunque las escriba sin tilde o con un pequeño error ("manteni" o "mantnimiento"
+ * encuentran "Mantenimiento"). Permite también texto libre: no obliga a elegir
+ * de la lista.
+ *
+ * Props:
+ *   value, onChange(texto)      → controlado como un input normal.
+ *   sugerencias                 → array de strings (o de objetos + getTexto).
+ *   getTexto                    → cómo sacar el string de cada sugerencia.
+ *   placeholder, className, id  → passthrough al input.
+ */
+export function AutocompletarConcepto({
+  value,
+  onChange,
+  sugerencias = [],
+  getTexto = (x) => x,
+  placeholder,
+  className = 'form-control',
+  id,
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [resaltado, setResaltado] = useState(-1)
+  const contenedorRef = useRef(null)
+
+  // Cerrar el desplegable al hacer clic fuera.
+  useEffect(() => {
+    const alClic = (e) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target)) {
+        setAbierto(false)
+      }
+    }
+    document.addEventListener('mousedown', alClic)
+    return () => document.removeEventListener('mousedown', alClic)
+  }, [])
+
+  const opciones = filtrarSugerencias(sugerencias, value || '', {
+    limite: 8,
+    getTexto,
+  }).map(getTexto)
+
+  // Ocultar la sugerencia que sea idéntica a lo ya escrito (no aporta).
+  const visibles = opciones.filter(
+    (o) => o.trim().toLowerCase() !== String(value || '').trim().toLowerCase()
+  )
+
+  const elegir = (texto) => {
+    onChange(texto)
+    setAbierto(false)
+    setResaltado(-1)
+  }
+
+  const alTeclado = (e) => {
+    if (!abierto || visibles.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setResaltado((r) => Math.min(r + 1, visibles.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setResaltado((r) => Math.max(r - 1, 0))
+    } else if (e.key === 'Enter' && resaltado >= 0) {
+      e.preventDefault()
+      elegir(visibles[resaltado])
+    } else if (e.key === 'Escape') {
+      setAbierto(false)
+      setResaltado(-1)
+    }
+  }
+
+  return (
+    <div className="autocompletar" ref={contenedorRef} style={{ position: 'relative' }}>
+      <input
+        id={id}
+        className={className}
+        value={value}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={(e) => {
+          onChange(e.target.value)
+          setAbierto(true)
+          setResaltado(-1)
+        }}
+        onFocus={() => setAbierto(true)}
+        onKeyDown={alTeclado}
+      />
+      {abierto && visibles.length > 0 && (
+        <ul
+          className="autocompletar-lista"
+          style={{
+            position: 'absolute',
+            zIndex: 30,
+            left: 0,
+            right: 0,
+            top: '100%',
+            margin: '2px 0 0',
+            padding: 0,
+            listStyle: 'none',
+            background: '#fff',
+            border: '1px solid #d1d5db',
+            borderRadius: '6px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            maxHeight: '220px',
+            overflowY: 'auto',
+          }}
+        >
+          {visibles.map((op, i) => (
+            <li
+              key={op + i}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                elegir(op)
+              }}
+              onMouseEnter={() => setResaltado(i)}
+              style={{
+                padding: '8px 12px',
+                cursor: 'pointer',
+                background: i === resaltado ? '#eef2ff' : 'transparent',
+                fontSize: '0.95em',
+              }}
+            >
+              {op}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 import { Component } from 'react'
+import * as Sentry from "@sentry/react"
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -7,17 +8,20 @@ export default class ErrorBoundary extends Component {
   }
 
   static getDerivedStateFromError(error) {
-    // Actualiza el estado para que la próxima renderización muestre la UI de repuesto
+    // Actualiza el estado para que la próxima renderización muestre la UI de repuesto[cite: 4]
     return { tieneError: true }
   }
 
   componentDidCatch(error, info) {
-    // Aquí podrías enviar el error a un servicio de monitoreo en el futuro
+    // Aquí enviamos el error silenciosamente al panel de Sentry
+    Sentry.captureException(error, { extra: info })
+    
+    // Mantenemos el log en la consola para cuando estés desarrollando localmente[cite: 4]
     console.error('Colapso de UI evitado por ErrorBoundary:', error, info)
   }
 
   recargarApp = () => {
-    // Limpia la URL y fuerza una recarga total ignorando el caché actual
+    // Limpia la URL y fuerza una recarga total ignorando el caché actual[cite: 4]
     window.location.href = window.location.origin + '?reload=' + new Date().getTime()
   }
 

@@ -463,13 +463,11 @@ export default function FormularioPago({
                 onChange={(e) => setCuentaId(e.target.value)}
               >
                 <option value="">Seleccione…</option>
-                {cuentas
-                  .filter((c) => c.currency === moneda || true)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} · {c.currency}
-                    </option>
-                  ))}
+                {cuentas.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {c.currency}
+                  </option>
+                ))}
               </select>
             </div>
 

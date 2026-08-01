@@ -195,3 +195,96 @@ export function normalizar(texto) {
     .toLowerCase()
     .trim()
 }
+
+/**
+ * Distancia de Levenshtein acotada (número mínimo de ediciones —inserciones,
+ * borrados o sustituciones— para transformar a en b). Se corta en cuanto
+ * supera `max` para no gastar tiempo en cadenas muy distintas.
+ * Se usa para tolerar errores de tipeo en el buscador.
+ */
+export function distanciaEdicion(a, b, max = 2) {
+  a = String(a ?? '')
+  b = String(b ?? '')
+  if (a === b) return 0
+  const la = a.length
+  const lb = b.length
+  if (Math.abs(la - lb) > max) return max + 1
+  if (la === 0) return lb
+  if (lb === 0) return la
+
+  let fila = Array.from({ length: lb + 1 }, (_, i) => i)
+  for (let i = 1; i <= la; i++) {
+    let prev = fila[0]
+    fila[0] = i
+    let mejorEnFila = fila[0]
+    for (let j = 1; j <= lb; j++) {
+      const tmp = fila[j]
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1
+      fila[j] = Math.min(
+        fila[j] + 1,      // borrado
+        fila[j - 1] + 1,  // inserción
+        prev + costo      // sustitución
+      )
+      prev = tmp
+      if (fila[j] < mejorEnFila) mejorEnFila = fila[j]
+    }
+    // Poda: si toda la fila ya supera max, no hay forma de mejorar.
+    if (mejorEnFila > max) return max + 1
+  }
+  return fila[lb]
+}
+
+/**
+ * Decide si `consulta` coincide con `candidato` de forma tolerante:
+ *   1. ignora acentos y mayúsculas (vía normalizar),
+ *   2. acepta coincidencia por prefijo o subcadena,
+ *   3. si no, acepta pequeños errores de tipeo (distancia de edición).
+ * Pensada para autocompletar conceptos ("manteni" → "Mantenimiento",
+ * "farmasia" → "Farmacia").
+ */
+export function coincideDifuso(consulta, candidato, tolerancia = 2) {
+  const q = normalizar(consulta)
+  const c = normalizar(candidato)
+  if (!q) return true
+  if (c.includes(q)) return true
+  // Comparar palabra por palabra del candidato para typos en términos largos.
+  const palabras = c.split(/\s+/)
+  for (const p of palabras) {
+    if (p.startsWith(q)) return true
+    if (Math.abs(p.length - q.length) <= tolerancia &&
+        distanciaEdicion(q, p, tolerancia) <= tolerancia) {
+      return true
+    }
+  }
+  // Último recurso: typo contra la cadena completa (conceptos de una palabra).
+  return distanciaEdicion(q, c, tolerancia) <= tolerancia
+}
+
+/**
+ * Filtra y ORDENA una lista de sugerencias por relevancia respecto a la
+ * consulta. Prioriza: coincidencia exacta de prefijo > subcadena > difusa.
+ * Devuelve como máximo `limite` resultados. `getTexto` extrae el string a
+ * comparar de cada elemento (por si son objetos).
+ */
+export function filtrarSugerencias(lista, consulta, opciones = {}) {
+  const { limite = 8, tolerancia = 2, getTexto = (x) => x } = opciones
+  const q = normalizar(consulta)
+
+  const puntuar = (item) => {
+    const c = normalizar(getTexto(item))
+    if (!c) return -1
+    if (!q) return 0                       // sin consulta: todos válidos
+    if (c === q) return 100
+    if (c.startsWith(q)) return 80
+    if (c.includes(q)) return 60
+    if (coincideDifuso(consulta, getTexto(item), tolerancia)) return 40
+    return -1
+  }
+
+  return lista
+    .map((item) => ({ item, score: puntuar(item) }))
+    .filter((x) => x.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limite)
+    .map((x) => x.item)
+}

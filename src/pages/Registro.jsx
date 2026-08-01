@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase, mensajeError } from '../lib/supabase'
 import { Aviso, IconoAyuda } from '../components/UI'
+import Turnstile from '../components/Turnstile'
 
 export default function Registro() {
   const navigate = useNavigate()
@@ -10,6 +11,7 @@ export default function Registro() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
   const [exito, setExito] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState(null)
 
   const registrar = async (e) => {
     e.preventDefault()
@@ -19,14 +21,17 @@ export default function Registro() {
     if (!form.adminName.trim()) return setError('El nombre del administrador es obligatorio.')
     if (form.password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres.')
     if (!form.aceptaTerminos) return setError('Debe aceptar los Términos y Condiciones para registrarse.')
+    if (!captchaToken) return setError('Por favor complete la verificación de seguridad.')
 
     setCargando(true)
     try {
-      // Inyectamos el payload oculto (options.data) para activar el Trigger SQL
+      // Inyectamos el payload oculto (options.data) para activar el Trigger SQL.
+      // El captchaToken prueba que hay una persona real (protección anti-bots).
       const { data, error: err } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,
         options: {
+          captchaToken,
           data: {
             condo_name: form.condoName.trim(),
             admin_name: form.adminName.trim()
@@ -43,6 +48,9 @@ export default function Registro() {
       }
     } catch (err) {
       setError(mensajeError(err))
+      // El token de Turnstile es de un solo uso: al fallar hay que rehacer
+      // la verificación, así que se limpia para forzar un nuevo challenge.
+      setCaptchaToken(null)
     } finally {
       setCargando(false)
     }
@@ -170,10 +178,18 @@ export default function Registro() {
               </label>
             </div>
 
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+              <Turnstile
+                accion="registro"
+                onToken={setCaptchaToken}
+                onExpire={() => setCaptchaToken(null)}
+              />
+            </div>
+
             <button 
               className="btn btn-primary" 
-              style={{ width: '100%', padding: '12px', fontSize: '1.1rem', marginTop: 16 }} 
-              disabled={cargando}
+              style={{ width: '100%', padding: '12px', fontSize: '1.1rem', marginTop: 8 }} 
+              disabled={cargando || !captchaToken}
             >
               {cargando ? 'Configurando plataforma...' : 'Crear cuenta'}
             </button>

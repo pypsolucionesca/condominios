@@ -140,6 +140,7 @@ export default function Unidades() {
   const sumaAlicuotas = activas.reduce((s, u) => s + Number(u.aliquot || 0), 0)
   const areaTotal = activas.reduce((s, u) => s + Number(u.area_m2 || 0), 0)
   const sinArea = activas.filter((u) => !u.area_m2 || Number(u.area_m2) <= 0).length
+  const estadoVacioOnboarding = unidades.length === 0;
 
   const abrirNueva = () => {
     setEditando(null)
@@ -434,7 +435,7 @@ export default function Unidades() {
             {areaTotal > 0 && ` · ${fmtNumero(areaTotal)} m² totales`}
           </p>
         </div>
-        {esAdmin && (
+        {esAdmin && !estadoVacioOnboarding && (
           <button className="btn btn-primary btn-accion flotante" onClick={abrirNueva}>
             <span className="texto-boton">+ Nueva unidad</span>
             <span className="icono-boton" aria-hidden="true">+</span>
@@ -460,147 +461,151 @@ export default function Unidades() {
         </Aviso>
       )}
 
-      <div className="barra-filtros">
-        <input
-          className="form-control"
-          style={{ flex: '1 1 100%' }}
-          placeholder="Buscar por código, empresa, ubicación o residente…"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-        />
-        <div style={{ display: 'flex', gap: '12px', flex: '1 1 100%' }}>
-          <select
-            className="form-control"
-            style={{ flex: 1, minWidth: 0 }}
-            value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value)}
-          >
-            <option value="">Todos los tipos</option>
-            {TIPOS_UNIDAD.map((t) => (
-              <option key={t.valor} value={t.valor}>
-                {t.etiqueta}
-              </option>
-            ))}
-          </select>
-          <select
-            className="form-control"
-            style={{ flex: 1, minWidth: 0 }}
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-          >
-            <option value="">Cualquier situación</option>
-            <option value="debe">Con deuda</option>
-            <option value="aldia">Al día</option>
-            <option value="sin_residente">Sin residente</option>
-          </select>
-        </div>
-      </div>
-
-      {(busqueda || filtroTipo || filtroEstado) && (
-        <p className="texto-ayuda" style={{ marginTop: -8, marginBottom: 12 }}>
-          {visibles.length} unidad(es) encontrada(s)
-          {(busqueda || filtroTipo || filtroEstado) && (
-            <>
-              {' · '}
-              <button
-                type="button"
-                className="enlace-inline"
-                onClick={() => {
-                  setBusqueda('')
-                  setFiltroTipo('')
-                  setFiltroEstado('')
-                }}
-              >
-                Limpiar filtros
-              </button>
-            </>
+      {estadoVacioOnboarding ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: '#ffffff', borderRadius: '12px', border: '2px dashed #cbd5e1', marginTop: '24px' }}>
+          <span aria-hidden="true" style={{ fontSize: '4rem', display: 'block', marginBottom: '16px' }}>🏢</span>
+          <h2 style={{ color: '#0f172a', fontSize: '1.5rem', marginBottom: '12px' }}>Bienvenido a tu nuevo condominio</h2>
+          <p style={{ color: '#475569', maxWidth: '450px', margin: '0 auto 24px auto', lineHeight: '1.6' }}>
+            El sistema está listo, pero la base de datos está en cero. El primer paso lógico para empezar a gestionar la cobranza es registrar los apartamentos o locales que conforman este edificio.
+          </p>
+          {esAdmin && (
+            <button className="btn btn-primary" onClick={abrirNueva} style={{ padding: '12px 24px', fontSize: '1.1rem' }}>
+              Registrar la primera unidad
+            </button>
           )}
-        </p>
-      )}
-
-      {visibles.length === 0 ? (
-        <div className="card">
-          <Vacio
-            icono="🏢"
-            titulo={unidades.length === 0 ? 'Aún no hay unidades' : 'Sin resultados'}
-            mensaje={
-              unidades.length === 0
-                ? 'Registre los apartamentos y locales del condominio para comenzar a emitir avisos de cobro.'
-                : 'Pruebe con otros términos de búsqueda.'
-            }
-            accion={
-              esAdmin && unidades.length === 0 ? (
-                <button className="btn btn-primary btn-auto" onClick={abrirNueva}>
-                  Registrar la primera unidad
-                </button>
-              ) : null
-            }
-          />
         </div>
       ) : (
-        <div className="lista-unidades">
-          {visibles.map((u) => {
-            const gente = miembros.filter((m) => m.unit_id === u.id)
-            const saldo = saldos[u.id] || 0
-            
-            const partesNombre = nombreUnidadCorto(u).split(' · ')
-            const tituloPrincipal = partesNombre[0]
-            const tituloSecundario = partesNombre.slice(1).join(' · ')
+        <>
+          <div className="barra-filtros">
+            <input
+              className="form-control"
+              style={{ flex: '1 1 100%' }}
+              placeholder="Buscar por código, empresa, ubicación o residente…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+            <div style={{ display: 'flex', gap: '12px', flex: '1 1 100%' }}>
+              <select
+                className="form-control"
+                style={{ flex: 1, minWidth: 0 }}
+                value={filtroTipo}
+                onChange={(e) => setFiltroTipo(e.target.value)}
+              >
+                <option value="">Todos los tipos</option>
+                {TIPOS_UNIDAD.map((t) => (
+                  <option key={t.valor} value={t.valor}>
+                    {t.etiqueta}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="form-control"
+                style={{ flex: 1, minWidth: 0 }}
+                value={filtroEstado}
+                onChange={(e) => setFiltroEstado(e.target.value)}
+              >
+                <option value="">Cualquier situación</option>
+                <option value="debe">Con deuda</option>
+                <option value="aldia">Al día</option>
+                <option value="sin_residente">Sin residente</option>
+              </select>
+            </div>
+          </div>
 
-            return (
-              <div key={u.id} className={`tarjeta-unidad ${!u.is_active ? 'inactiva' : ''}`}>
-                <div className="unidad-logo">
-                  {u.logo_url ? (
-                    <img src={u.logo_url} alt="" />
-                  ) : (
-                    <span aria-hidden="true">
-                      {u.unit_type === 'local_comercial' ? '🏪' : '🏠'}
-                    </span>
-                  )}
-                </div>
+          {(busqueda || filtroTipo || filtroEstado) && (
+            <p className="texto-ayuda" style={{ marginTop: -8, marginBottom: 12 }}>
+              {visibles.length} unidad(es) encontrada(s)
+              {(busqueda || filtroTipo || filtroEstado) && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="enlace-inline"
+                    onClick={() => {
+                      setBusqueda('')
+                      setFiltroTipo('')
+                      setFiltroEstado('')
+                    }}
+                  >
+                    Limpiar filtros
+                  </button>
+                </>
+              )}
+            </p>
+          )}
 
-                <div
-                  className="unidad-datos clicable"
-                  onClick={() => setDetalleUnidad({ unidad: u, gente })}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(ev) => {
-                    if (ev.key === 'Enter' || ev.key === ' ') {
-                      ev.preventDefault()
-                      setDetalleUnidad({ unidad: u, gente })
-                    }
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '4px' }}>
-                    <div className="unidad-titulo" style={{ marginBottom: tituloSecundario ? '2px' : '0' }}>
-                      <strong>{tituloPrincipal}</strong>
-                      <span className="chip">{etiqueta(u.unit_type)}</span>
-                      {!u.is_active && <span className="chip chip-inactivo">Inactiva</span>}
+          {visibles.length === 0 ? (
+            <div className="card">
+              <Vacio
+                icono="🔍"
+                titulo="Sin resultados"
+                mensaje="Pruebe con otros términos de búsqueda o limpie los filtros."
+              />
+            </div>
+          ) : (
+            <div className="lista-unidades">
+              {visibles.map((u) => {
+                const gente = miembros.filter((m) => m.unit_id === u.id)
+                const saldo = saldos[u.id] || 0
+                
+                const partesNombre = nombreUnidadCorto(u).split(' · ')
+                const tituloPrincipal = partesNombre[0]
+                const tituloSecundario = partesNombre.slice(1).join(' · ')
+
+                return (
+                  <div key={u.id} className={`tarjeta-unidad ${!u.is_active ? 'inactiva' : ''}`}>
+                    <div className="unidad-logo">
+                      {u.logo_url ? (
+                        <img src={u.logo_url} alt="" />
+                      ) : (
+                        <span aria-hidden="true">
+                          {u.unit_type === 'local_comercial' ? '🏪' : '🏠'}
+                        </span>
+                      )}
                     </div>
-                    {tituloSecundario && (
-                      <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
-                        {tituloSecundario}
-                      </strong>
-                    )}
-                  </div>
 
-                  <div className="unidad-meta">
-                    {u.area_m2 ? `${fmtNumero(u.area_m2)} m²` : 'Sin área'}
-                    {u.floor ? ` · Piso ${u.floor}` : ''}
-                    {u.fixed_fee ? ` · Cuota ${fmtUSD(u.fixed_fee)}` : ''}
-                    <span
-                      className="dato-secundario"
-                      title="Coeficiente de propiedad. Solo se usa para repartir gastos extraordinarios."
+                    <div
+                      className="unidad-datos clicable"
+                      onClick={() => setDetalleUnidad({ unidad: u, gente })}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          ev.preventDefault()
+                          setDetalleUnidad({ unidad: u, gente })
+                        }
+                      }}
                     >
-                      · Alícuota {(Number(u.aliquot) * 100).toFixed(2)}%
-                    </span>
-                  </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '4px' }}>
+                        <div className="unidad-titulo" style={{ marginBottom: tituloSecundario ? '2px' : '0' }}>
+                          <strong>{tituloPrincipal}</strong>
+                          <span className="chip">{etiqueta(u.unit_type)}</span>
+                          {!u.is_active && <span className="chip chip-inactivo">Inactiva</span>}
+                        </div>
+                        {tituloSecundario && (
+                          <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                            {tituloSecundario}
+                          </strong>
+                        )}
+                      </div>
 
-                  {gente.length === 0 ? (
-                    <div className="unidad-residentes vacio">Sin residentes vinculados</div>
-                  ) : (
-                    <div className="unidad-residentes">
-                      {gente.map((m) => (
+                      <div className="unidad-meta">
+                        {u.area_m2 ? `${fmtNumero(u.area_m2)} m²` : 'Sin área'}
+                        {u.floor ? ` · Piso ${u.floor}` : ''}
+                        {u.fixed_fee ? ` · Cuota ${fmtUSD(u.fixed_fee)}` : ''}
+                        <span
+                          className="dato-secundario"
+                          title="Coeficiente de propiedad. Solo se usa para repartir gastos extraordinarios."
+                        >
+                          · Alícuota {(Number(u.aliquot) * 100).toFixed(2)}%
+                        </span>
+                      </div>
+
+                      {gente.length === 0 ? (
+                        <div className="unidad-residentes vacio">Sin residentes vinculados</div>
+                      ) : (
+                        <div className="unidad-residentes">
+                          {gente.map((m) => (
                         <span key={m.id} className="residente-chip">
                           {m.profiles?.avatar_url && <img src={m.profiles.avatar_url} alt="" />}
                           {m.profiles?.full_name || 'Sin nombre'}
@@ -635,48 +640,50 @@ export default function Unidades() {
                             </button>
                           )}
                         </span>
-                      ))}
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="unidad-derecha">
-                  <div className={`unidad-saldo ${saldo > 0 ? 'debe' : saldo < 0 ? 'favor' : ''}`}>
-                    <small>{saldo > 0 ? 'Debe' : saldo < 0 ? 'A favor' : 'Solvente'}</small>
-                    <strong>{saldo === 0 ? '—' : fmtUSD(Math.abs(saldo))}</strong>
+                    <div className="unidad-derecha">
+                      <div className={`unidad-saldo ${saldo > 0 ? 'debe' : saldo < 0 ? 'favor' : ''}`}>
+                        <small>{saldo > 0 ? 'Debe' : saldo < 0 ? 'A favor' : 'Solvente'}</small>
+                        <strong>{saldo === 0 ? '—' : fmtUSD(Math.abs(saldo))}</strong>
+                      </div>
+
+                      {esAdmin && (
+                        <MenuAcciones
+                          acciones={[
+                            { icono: '✏️', texto: 'Editar', onClick: () => abrirEditar(u) },
+                            {
+                              icono: '👤',
+                              texto: 'Invitar',
+                              onClick: () => abrirInvitar(u),
+                              desactivado: !u.is_active,
+                            },
+                            {
+                              icono: u.is_active ? '🚫' : '✅',
+                              texto: u.is_active ? 'Desactivar' : 'Reactivar',
+                              onClick: () => cambiarEstado(u),
+                              peligro: u.is_active,
+                            },
+                            {
+                              icono: '🗑️',
+                              texto: 'Eliminar',
+                              onClick: () => eliminar(u),
+                              peligro: true,
+                              titulo: 'Solo si no tiene historial',
+                            },
+                          ]}
+                        />
+                      )}
+                    </div>
                   </div>
-
-                  {esAdmin && (
-                    <MenuAcciones
-                      acciones={[
-                        { icono: '✏️', texto: 'Editar', onClick: () => abrirEditar(u) },
-                        {
-                          icono: '👤',
-                          texto: 'Invitar',
-                          onClick: () => abrirInvitar(u),
-                          desactivado: !u.is_active,
-                        },
-                        {
-                          icono: u.is_active ? '🚫' : '✅',
-                          texto: u.is_active ? 'Desactivar' : 'Reactivar',
-                          onClick: () => cambiarEstado(u),
-                          peligro: u.is_active,
-                        },
-                        {
-                          icono: '🗑️',
-                          texto: 'Eliminar',
-                          onClick: () => eliminar(u),
-                          peligro: true,
-                          titulo: 'Solo si no tiene historial',
-                        },
-                      ]}
-                    />
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* Modales Inyectados */}

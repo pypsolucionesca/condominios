@@ -8,20 +8,9 @@ const OSCURO = [15, 23, 42]
 const ROJO = [220, 38, 38]
 const VERDE = [22, 163, 74]
 
-// Altura reservada al pie de página (numeración + nota + sello de
-// generación). Todas las tablas usan este margen inferior para que
-// autoTable salte de página ANTES de invadir esa zona, evitando que el
-// contenido pise el pie. Es la causa raíz del solapamiento en los PDF.
 const MARGEN_PIE = 26
-
-// Margen estándar de las tablas: laterales de siempre + inferior que
-// protege el pie. Se reutiliza en todos los autoTable.
 const MARGEN_TABLA = { left: 14, right: 14, bottom: MARGEN_PIE }
 
-/**
- * Encabezado común a todos los documentos.
- * Devuelve la coordenada Y donde puede empezar el contenido.
- */
 function encabezado(doc, condominio, titulo, logoDataUrl) {
   const ancho = doc.internal.pageSize.getWidth()
 
@@ -35,7 +24,6 @@ function encabezado(doc, condominio, titulo, logoDataUrl) {
       doc.addImage(logoDataUrl, 'PNG', 14, 12, 18, 18)
       x = 37
     } catch {
-      /* si el logo falla, se continúa sin él */
     }
   }
 
@@ -60,7 +48,6 @@ function encabezado(doc, condominio, titulo, logoDataUrl) {
   return 42
 }
 
-/** Pie con numeración y sello de generación. */
 function pie(doc, nota) {
   const paginas = doc.internal.getNumberOfPages()
   const ancho = doc.internal.pageSize.getWidth()
@@ -86,16 +73,11 @@ function pie(doc, nota) {
   }
 }
 
-/**
- * Aviso de cobro individual.
- * Incluye los renglones del cargo y el saldo anterior si lo hubiera.
- */
 export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = [], logoDataUrl }) {
   const doc = new jsPDF()
   const ancho = doc.internal.pageSize.getWidth()
   let y = encabezado(doc, condominio, 'AVISO DE COBRO', logoDataUrl)
 
-  // Datos de cabecera en dos columnas
   doc.setFontSize(9)
   doc.setTextColor(...GRIS)
   doc.setFont('helvetica', 'bold')
@@ -145,7 +127,6 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
 
   y += 16
 
-  // Renglones del cargo
   autoTable(doc, {
     startY: y,
     head: [['Concepto', 'Tipo', 'Monto']],
@@ -167,7 +148,6 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
 
   y = doc.lastAutoTable.finalY + 8
 
-  // Totales
   const filas = [['Subtotal', fmtUSD(aviso.subtotal)]]
   if (Number(aviso.previous_balance) > 0) {
     filas.push(['Saldo anterior', fmtUSD(aviso.previous_balance)])
@@ -198,7 +178,6 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
 
   y = doc.lastAutoTable.finalY + 6
 
-  // Equivalente en bolívares con la tasa congelada del aviso
   if (aviso.exchange_rate) {
     doc.setFontSize(9)
     doc.setTextColor(...GRIS)
@@ -213,7 +192,6 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
     y += 8
   }
 
-  // Sello de estado
   if (aviso.status === 'pagado' || aviso.status === 'anulado') {
     doc.setFontSize(28)
     doc.setTextColor(...(aviso.status === 'pagado' ? VERDE : ROJO))
@@ -228,7 +206,6 @@ export function pdfAviso({ aviso, renglones, unidad, condominio, residentes = []
   return doc
 }
 
-/** Estado de cuenta de una unidad, con saldo corrido. */
 export function pdfEstadoCuenta({ unidad, movimientos, condominio, saldo, logoDataUrl }) {
   const doc = new jsPDF()
   const ancho = doc.internal.pageSize.getWidth()
@@ -293,7 +270,6 @@ export function pdfEstadoCuenta({ unidad, movimientos, condominio, saldo, logoDa
   return doc
 }
 
-/** Informe de transparencia: gastos e ingresos del período. */
 export function pdfInformeGastos({ condominio, gastos, cuentas, desde, hasta, logoDataUrl }) {
   const doc = new jsPDF()
   const ancho = doc.internal.pageSize.getWidth()
@@ -307,7 +283,6 @@ export function pdfInformeGastos({ condominio, gastos, cuentas, desde, hasta, lo
 
   const total = (gastos || []).reduce((s, g) => s + Number(g.amount_usd || 0), 0)
 
-  // Resumen por categoría: responde a "en qué se va el dinero"
   const porCategoria = {}
   for (const g of gastos || []) {
     const c = g.expense_categories?.name || 'Sin categoría'
@@ -405,13 +380,6 @@ export function pdfInformeGastos({ condominio, gastos, cuentas, desde, hasta, lo
   return doc
 }
 
-
-/**
- * Recibo de pago para personal o proveedor.
- *
- * Se genera en dos mitades de la misma hoja: una para el beneficiario y
- * otra para el archivo del condominio, con espacio de firma en ambas.
- */
 export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
   const doc = new jsPDF()
   const ancho = doc.internal.pageSize.getWidth()
@@ -428,7 +396,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
       try {
         doc.addImage(logoDataUrl, 'PNG', 14, y - 4, 16, 16)
       } catch {
-        /* sin logo */
       }
     }
 
@@ -461,7 +428,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
     doc.line(14, y, ancho - 14, y)
     y += 9
 
-    // Datos del pago
     const campo = (etiquetaTexto, valor, px, py) => {
       doc.setFontSize(7)
       doc.setTextColor(...GRIS)
@@ -481,7 +447,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
     campo('CARGO', beneficiario?.role_title, ancho / 2 + 10, y)
     y += 14
 
-    // Forma de pago, si está registrada: evita tener que consultarla aparte
     const formaPago = beneficiario?.bank_1_name
       ? `${beneficiario.bank_1_name} · ${beneficiario.bank_1_account || ''}`
       : beneficiario?.mobile_1_phone
@@ -502,9 +467,12 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
       y += 2
     }
 
-    // Concepto y monto
+    // Diseño dinámico: Si el recibo tiene un descuento, la caja crece
+    const tieneDeduccion = pago.deduction_usd && Number(pago.deduction_usd) > 0
+    const altoCaja = tieneDeduccion ? 38 : 26
+
     doc.setFillColor(248, 250, 252)
-    doc.roundedRect(14, y - 4, ancho - 28, 26, 2, 2, 'F')
+    doc.roundedRect(14, y - 4, ancho - 28, altoCaja, 2, 2, 'F')
 
     doc.setFontSize(7)
     doc.setTextColor(...GRIS)
@@ -514,35 +482,59 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
     doc.setFontSize(10)
     doc.setTextColor(...OSCURO)
     doc.setFont('helvetica', 'normal')
-    const concepto = doc.splitTextToSize(pago.description || '', ancho - 90)
-    doc.text(concepto.slice(0, 2), 18, y + 8)
+    const maxAnchoTexto = ancho - (tieneDeduccion ? 110 : 90)
+    const concepto = doc.splitTextToSize(pago.description || '', maxAnchoTexto)
+    doc.text(concepto.slice(0, tieneDeduccion ? 4 : 2), 18, y + 8)
 
     doc.setFontSize(7)
     doc.setTextColor(...GRIS)
     doc.setFont('helvetica', 'bold')
-    doc.text('MONTO', ancho - 18, y + 2, { align: 'right' })
 
-    doc.setFontSize(14)
-    doc.setTextColor(...AZUL)
-    doc.text(
-      pago.currency === 'VES'
-        ? `Bs. ${fmtNumero(pago.amount)}`
-        : fmtUSD(pago.amount),
-      ancho - 18,
-      y + 10,
-      { align: 'right' }
-    )
-
-    if (pago.currency === 'VES') {
-      doc.setFontSize(7.5)
+    if (tieneDeduccion) {
+      doc.text('SALARIO BRUTO', ancho - 18, y + 2, { align: 'right' })
+      doc.setFontSize(10)
+      doc.setTextColor(...OSCURO)
+      doc.text(pago.currency === 'VES' ? `Bs. ${fmtNumero(pago.amount)}` : fmtUSD(pago.amount), ancho - 18, y + 6, { align: 'right' })
+      
+      doc.setFontSize(7)
       doc.setTextColor(...GRIS)
-      doc.setFont('helvetica', 'normal')
-      doc.text(`Equiv. ${fmtUSD(pago.amount_usd)}`, ancho - 18, y + 16, { align: 'right' })
+      doc.text('DEDUCCIÓN (PRÉSTAMO)', ancho - 18, y + 11, { align: 'right' })
+      doc.setFontSize(10)
+      doc.setTextColor(...ROJO)
+      doc.text(pago.currency === 'VES' ? `- Bs. ${fmtNumero(pago.deduction_amount)}` : `- ${fmtUSD(pago.deduction_usd)}`, ancho - 18, y + 15, { align: 'right' })
+      
+      doc.setFontSize(8)
+      doc.setTextColor(...AZUL)
+      doc.setFont('helvetica', 'bold')
+      doc.text('NETO PAGADO', ancho - 18, y + 22, { align: 'right' })
+      doc.setFontSize(12)
+      
+      const netoVES = Number(pago.amount) - Number(pago.deduction_amount)
+      const netoUSD = Number(pago.amount_usd) - Number(pago.deduction_usd)
+      
+      doc.text(pago.currency === 'VES' ? `Bs. ${fmtNumero(netoVES)}` : fmtUSD(netoUSD), ancho - 18, y + 27, { align: 'right' })
+      
+      y += 42
+    } else {
+      doc.text('MONTO', ancho - 18, y + 2, { align: 'right' })
+      doc.setFontSize(14)
+      doc.setTextColor(...AZUL)
+      doc.text(
+        pago.currency === 'VES' ? `Bs. ${fmtNumero(pago.amount)}` : fmtUSD(pago.amount),
+        ancho - 18,
+        y + 10,
+        { align: 'right' }
+      )
+
+      if (pago.currency === 'VES') {
+        doc.setFontSize(7.5)
+        doc.setTextColor(...GRIS)
+        doc.setFont('helvetica', 'normal')
+        doc.text(`Equiv. ${fmtUSD(pago.amount_usd)}`, ancho - 18, y + 16, { align: 'right' })
+      }
+      y += 32
     }
 
-    y += 32
-
-    // Firmas
     doc.setDrawColor(148, 163, 184)
     doc.line(20, y + 12, 88, y + 12)
     doc.line(ancho - 88, y + 12, ancho - 20, y + 12)
@@ -563,7 +555,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
 
   mitad(0, 'Copia para el beneficiario')
 
-  // Línea de corte
   doc.setLineDashPattern([2, 2], 0)
   doc.setDrawColor(180, 190, 200)
   doc.line(10, alto / 2, ancho - 10, alto / 2)
@@ -578,7 +569,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
   return doc
 }
 
-/** Historial de pagos a un beneficiario en un período. */
 export function pdfHistorialBeneficiario({ beneficiario, pagos, condominio, desde, hasta, logoDataUrl }) {
   const doc = new jsPDF()
   const ancho = doc.internal.pageSize.getWidth()
@@ -607,18 +597,22 @@ export function pdfHistorialBeneficiario({ beneficiario, pagos, condominio, desd
 
   y += 16
 
-  const total = (pagos || []).reduce((s, p) => s + Number(p.amount_usd || 0), 0)
+  const total = (pagos || []).reduce((s, p) => s + (Number(p.amount_usd || 0) - (Number(p.deduction_usd) || 0)), 0)
 
   autoTable(doc, {
     startY: y,
-    head: [['Fecha', 'Concepto', 'Cuenta', 'Monto', 'Equiv. USD']],
-    body: (pagos || []).map((p) => [
-      fmtFecha(p.expense_date),
-      p.description,
-      p.accounts?.name || '—',
-      p.currency === 'VES' ? `Bs. ${fmtNumero(p.amount)}` : fmtUSD(p.amount),
-      fmtUSD(p.amount_usd),
-    ]),
+    head: [['Fecha', 'Concepto', 'Cuenta', 'Monto NETO', 'Equiv. USD']],
+    body: (pagos || []).map((p) => {
+      const netVES = Number(p.amount) - (Number(p.deduction_amount) || 0)
+      const netUSD = Number(p.amount_usd) - (Number(p.deduction_usd) || 0)
+      return [
+        fmtFecha(p.expense_date),
+        p.description,
+        p.accounts?.name || '—',
+        p.currency === 'VES' ? `Bs. ${fmtNumero(netVES)}` : fmtUSD(netUSD),
+        fmtUSD(netUSD),
+      ]
+    }),
     foot: [['', '', '', 'TOTAL', fmtUSD(total)]],
     theme: 'striped',
     headStyles: { fillColor: AZUL, fontSize: 8.5 },
@@ -654,7 +648,6 @@ export function pdfHistorialBeneficiario({ beneficiario, pagos, condominio, desd
   return doc
 }
 
-/** Convierte una URL de imagen a data URL, para incrustarla en el PDF. */
 export async function logoParaPdf(url) {
   if (!url) return null
   try {

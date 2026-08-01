@@ -14,14 +14,6 @@ const TIPOS_CARGO = [
   { valor: 'otro', etiqueta: 'Otro' },
 ]
 
-/**
- * Detalle de un aviso de cobro.
- *
- * Los montos solo se editan mientras no haya pagos aplicados: si el
- * residente ya tiene un PDF con una cifra, cambiarla en silencio genera
- * un conflicto peor que el error original. Con pagos aplicados, la vía
- * correcta es anular y emitir de nuevo.
- */
 export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectura = false }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(false)
@@ -127,7 +119,6 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
     })
   }
 
-  // Calculamos el estado real ignorando el acumulado viejo
   const estadoReal = datos?.estado === 'anulado' 
     ? 'anulado' 
     : (Number(datos?.pagado) >= Number(datos?.subtotal) 
@@ -178,8 +169,6 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
                 {datos.dias_mora > 0 && ` · ${datos.dias_mora} días`}
               </strong>
             </div>
-            {/* Ocultamos intencionalmente la Tasa de Emisión y el Equivalente 
-                para evitar cruces y confusiones con las tasas de los pagos */}
           </div>
 
           {!editando ? (
@@ -198,8 +187,6 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
                       </td>
                     </tr>
                   ))}
-                  {/* Se oculta la línea de "Saldo anterior" para mantener el recibo 
-                      enfocado estrictamente en la cuota pura del mes */}
                   {Number(datos.credito_aplicado) > 0 && (
                     <tr>
                       <td>Saldo a favor aplicado</td>
@@ -379,7 +366,6 @@ export function DetalleAviso({ invoiceId, abierto, onCerrar, onCambio, soloLectu
   )
 }
 
-/** Detalle de un pago, con su comprobante y los avisos que cubrió. */
 export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = false, esAdmin = false, onCambio }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(false)
@@ -422,7 +408,6 @@ export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = fal
     cargarDetalle()
   }, [abierto, paymentId, cargarDetalle])
 
-  // Guardar la edición de un pago reportado
   const guardarEdicion = async (e) => {
     e.preventDefault()
     setError(null)
@@ -452,7 +437,6 @@ export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = fal
     }
   }
 
-  // Anular un pago confirmado (con motivo)
   const anular = () => {
     setConfirmacion({
       titulo: 'Anular pago confirmado',
@@ -582,8 +566,6 @@ export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = fal
             </small>
           )}
 
-          {/* Acciones de gestión: editar mientras está reportado; anular si
-              ya fue confirmado (solo admin). */}
           {puedeGestionar && !editando && (
             <div className="panel-acciones">
               {datos.estado === 'reportado' && (
@@ -603,7 +585,6 @@ export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = fal
             </div>
           )}
 
-          {/* Formulario de edición (solo para pagos reportados) */}
           {puedeGestionar && editando && (
             <form onSubmit={guardarEdicion} className="editor-pago">
               <h4 className="subtitulo">Corregir el pago</h4>
@@ -701,7 +682,6 @@ export function DetallePago({ paymentId, abierto, onCerrar, puedeGestionar = fal
   )
 }
 
-/** Detalle de un gasto, editable en sus datos descriptivos. */
 export function DetalleGasto({ expenseId, abierto, onCerrar, onCambio, categorias = [], personal = [] }) {
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(false)
@@ -767,10 +747,10 @@ export function DetalleGasto({ expenseId, abierto, onCerrar, onCambio, categoria
     }
   }
 
-  const anular = () => {
+  const eliminar = () => {
     setConfirmacion({
-      titulo: 'Anular gasto',
-      mensaje: `Se devolverá ${fmtUSD(datos.monto_usd)} a ${datos.cuenta?.nombre}. Ambos movimientos quedan visibles en el historial.`,
+      titulo: 'Eliminar registro',
+      mensaje: `Se devolverá ${fmtUSD(datos.monto_usd)} a ${datos.cuenta?.nombre}. Si era un préstamo, la deuda se revertirá y el registro se borrará de forma permanente.`,
       accion: async (razon) => {
         setEnviando(true)
         const { error: err } = await supabase.rpc('void_expense', {
@@ -779,10 +759,12 @@ export function DetalleGasto({ expenseId, abierto, onCerrar, onCambio, categoria
         })
         setEnviando(false)
         setConfirmacion(null)
-        if (err) setError(mensajeError(err))
-        else {
-          cargar()
+        if (err) {
+          setError(mensajeError(err))
+        } else {
+          onCerrar() 
           onCambio?.()
+          setTimeout(() => alert('El registro ha sido eliminado exitosamente.'), 150)
         }
       },
     })
@@ -857,8 +839,8 @@ export function DetalleGasto({ expenseId, abierto, onCerrar, onCambio, categoria
 
               {datos.editable && (
                 <div className="panel-acciones">
-                  <button className="btn btn-danger" onClick={anular} disabled={enviando}>
-                    Anular
+                  <button className="btn btn-danger" onClick={eliminar} disabled={enviando}>
+                    Eliminar
                   </button>
                   <button className="btn btn-primary" onClick={() => setEditando(true)}>
                     Editar
@@ -870,7 +852,7 @@ export function DetalleGasto({ expenseId, abierto, onCerrar, onCambio, categoria
             <>
               <Aviso tipo="aviso">
                 El monto no se puede modificar aquí: alteraría el saldo de la cuenta sin dejar
-                rastro. Para corregirlo, anule el gasto y regístrelo de nuevo.
+                rastro. Para corregirlo, elimine el gasto y regístrelo de nuevo.
               </Aviso>
 
               <div className="form-group">
@@ -956,7 +938,6 @@ export function DetalleGasto({ expenseId, abierto, onCerrar, onCambio, categoria
   )
 }
 
-/** Confirmación que exige escribir un motivo. */
 function ConfirmarMotivo({ datos, enviando, onCancelar }) {
   const [motivo, setMotivo] = useState('')
 

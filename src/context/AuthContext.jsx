@@ -187,10 +187,11 @@ export function AuthProvider({ children }) {
     }
   }, [cargarPerfil])
 
-  const iniciarSesion = async (email, password) => {
+  const iniciarSesion = async (email, password, captchaToken) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
+      options: captchaToken ? { captchaToken } : undefined,
     })
     if (error) return { ok: false, error: mensajeError(error) }
     return { ok: true, data }

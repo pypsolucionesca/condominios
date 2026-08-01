@@ -503,8 +503,8 @@ export default function Configuracion() {
           <h2 className="card-header">Cobro de cuotas</h2>
 
           <div className="form-group">
-            <label>Logo del condominio</label>
             <SelectorImagen
+              etiqueta="Logo del condominio"
               valorActual={condominio?.logo_url}
               onSeleccion={setLogoArchivo}
               ayuda="Aparece en los avisos, recibos y reportes en PDF."

@@ -2,10 +2,11 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { fmtUSD, fmtMoneda, fmtNumero, fmtFecha, etiqueta, hoy, FRECUENCIAS, TIPOS_BENEFICIARIO, normalizar } from '../lib/formato'
-import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen, IconoAyuda } from '../components/UI'
+import { Panel, MenuAcciones, Confirmar, Aviso, Vacio, Cargador, Indicador, SelectorImagen, IconoAyuda, AutocompletarConcepto } from '../components/UI'
 import CampoFecha from '../components/CampoFecha'
 import { DetalleGasto } from '../components/Detalles'
 import LibroCuenta from '../components/LibroCuenta'
+import ModalAdelanto from '../components/ModalAdelanto'
 
 const PESTANAS = [
   { id: 'cuentas', texto: 'Cuentas' },
@@ -36,6 +37,8 @@ export default function Tesoreria() {
   const [gastoDetalle, setGastoDetalle] = useState(null)
   const [libroCuenta, setLibroCuenta] = useState(null)
 
+  const [empleadoAdelanto, setEmpleadoAdelanto] = useState(null)
+
   const [formCuenta, setFormCuenta] = useState({
     name: '',
     kind: 'caja',
@@ -52,8 +55,8 @@ export default function Tesoreria() {
   const FORM_GASTO = {
     account_id: '',
     description: '',
-    amount_usd: '',      // el monto se define siempre en dólares
-    amount: '',          // lo que realmente se paga, en la moneda elegida
+    amount_usd: '',      
+    amount: '',          
     currency: 'USD',
     expense_date: hoy(),
     category_id: '',
@@ -112,13 +115,14 @@ export default function Tesoreria() {
     persona: null,
     amount_usd: '',
     amount: '',
+    descuento_usd: '', 
     currency: 'USD',
     payment_date: hoy(),
     account_id: '',
     concepto: '',
-    tasa_manual: '',     // tasa editable para pagos con fecha pasada
-    operacion: '',       // número de operación (obligatorio si es banco)
-    generar_recibo: true, // si se descarga el recibo PDF tras pagar
+    tasa_manual: '',     
+    operacion: '',       
+    generar_recibo: true, 
   })
 
   const [formMovimiento, setFormMovimiento] = useState({
@@ -183,8 +187,6 @@ export default function Tesoreria() {
     cargar()
   }, [cargar])
 
-  // ------------------------------------------------------------- filtros
-  
   const gastosVisibles = useMemo(() => {
     const q = normalizar(busqueda)
     if (!q) return gastos
@@ -209,15 +211,30 @@ export default function Tesoreria() {
     )
   }, [personal, pestana, busqueda])
 
+  // Conceptos ya usados (en compromisos recurrentes y gastos), sin repetir,
+  // para alimentar el autocompletado tolerante a acentos/typos. Se ordenan
+  // por frecuencia de uso: lo más registrado aparece primero.
+  const conceptosUsados = useMemo(() => {
+    const conteo = new Map()
+    const sumar = (texto) => {
+      const t = String(texto || '').trim()
+      if (!t) return
+      conteo.set(t, (conteo.get(t) || 0) + 1)
+    }
+    compromisos.forEach((c) => sumar(c.description))
+    gastos.forEach((g) => sumar(g.description))
+    return [...conteo.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([texto]) => texto)
+  }, [compromisos, gastos])
 
   const cerrarPanel = () => {
     setPanel(null)
     setEditando(null)
     setReciboEmpleado(null)
     setQrArchivo(null)
+    setEmpleadoAdelanto(null)
   }
-
-  // ------------------------------------------------------------- cuentas
 
   const guardarCuenta = async (e) => {
     e.preventDefault()
@@ -263,7 +280,6 @@ export default function Tesoreria() {
         cuentaId = data.id
       }
 
-      // Guardar el QR si se seleccionó uno
       if (qrArchivo && cuentaId) {
         const { subirImagen } = await import('../lib/imagenes')
         const { url } = await subirImagen(qrArchivo, 'logos', `cuentas/${cuentaId}/qr`, {
@@ -284,8 +300,6 @@ export default function Tesoreria() {
     }
   }
 
-  // -------------------------------------------------------------- gastos
-
   const guardarGasto = async (e) => {
     e.preventDefault()
     setError(null)
@@ -293,11 +307,28 @@ export default function Tesoreria() {
     if (!formGasto.account_id) return setError('Seleccione la cuenta de origen.')
     if (!formGasto.description.trim()) return setError('Describa el gasto.')
 
+    // La tasa debe corresponder a la FECHA del gasto, no a la de hoy.
+    // Para gastos con fecha pasada esto evita descuadrar la contabilidad
+    // histórica en bolívares. Solo se consulta cuando el gasto es en VES.
+    let tasaGasto = null
+    if (formGasto.currency === 'VES') {
+      const { data: rd } = await supabase.rpc('rate_detail', {
+        p_date: formGasto.expense_date,
+      })
+      tasaGasto = rd?.tasa || null
+      if (!tasaGasto) {
+        return setError(
+          `No hay tasa registrada para el ${formGasto.expense_date} ni fechas anteriores. ` +
+            'Regístrela en Ajustes antes de cargar un gasto en bolívares.'
+        )
+      }
+    }
+
     let montoUSD = Number(formGasto.amount_usd)
     if ((!montoUSD || montoUSD <= 0) && formGasto.currency === 'VES') {
       const bs = Number(formGasto.amount)
-      if (bs > 0 && tasaHoy?.tasa) {
-        montoUSD = Number((bs / tasaHoy.tasa).toFixed(2))
+      if (bs > 0 && tasaGasto) {
+        montoUSD = Number((bs / tasaGasto).toFixed(2))
       }
     }
     if (!montoUSD || montoUSD <= 0) {
@@ -311,7 +342,7 @@ export default function Tesoreria() {
     const montoPago =
       formGasto.currency === 'USD'
         ? montoUSD
-        : Number(formGasto.amount) || montoUSD * (tasaHoy?.tasa || 0)
+        : Number(formGasto.amount) || montoUSD * tasaGasto
 
     if (!montoPago || montoPago <= 0) {
       return setError('No se pudo calcular el monto a pagar. Verifique la tasa.')
@@ -336,7 +367,7 @@ export default function Tesoreria() {
         p_supplier: formGasto.supplier.trim() || null,
         p_invoice_ref: formGasto.invoice_ref.trim() || null,
         p_receipt_url: rutaRecibo,
-        p_rate: formGasto.currency === 'VES' ? tasaHoy?.tasa || null : null,
+        p_rate: formGasto.currency === 'VES' ? tasaGasto : null,
       })
       if (err) throw err
 
@@ -351,8 +382,6 @@ export default function Tesoreria() {
       setEnviando(false)
     }
   }
-
-  // ------------------------------------------------------------ personal
 
   const guardarPersona = async (e) => {
     e.preventDefault()
@@ -423,8 +452,6 @@ export default function Tesoreria() {
       setEnviando(false)
     }
   }
-
-  // --------------------------------------------------------- compromisos
 
   const guardarCompromiso = async (e) => {
     e.preventDefault()
@@ -553,8 +580,6 @@ export default function Tesoreria() {
     }
   }
 
-  // ---------------------------------------------------------- categorías
-
   const guardarCategoria = async (e) => {
     e.preventDefault()
     setError(null)
@@ -609,8 +634,6 @@ export default function Tesoreria() {
     })
   }
 
-  // ------------------------------------------------------- pago a empleado
-
   const abrirPagoEmpleado = (persona) => {
     const periodo = { diario: 'Jornada', semanal: 'Semana', quincenal: 'Quincena', mensual: 'Mes' }
 
@@ -625,6 +648,7 @@ export default function Tesoreria() {
       persona,
       amount_usd: salarioUSD,
       amount: '',
+      descuento_usd: '',
       currency: 'USD',
       payment_date: hoy(),
       account_id: '',
@@ -633,6 +657,7 @@ export default function Tesoreria() {
         : `Pago a ${persona.full_name}`,
       tasa_manual: tasaHoy?.tasa ? String(tasaHoy.tasa) : '',
       operacion: '',
+      generar_recibo: true,
     })
     setPanel('pagar-empleado')
   }
@@ -642,19 +667,41 @@ export default function Tesoreria() {
     setError(null)
 
     const montoUSD = Number(pagoEmpleado.amount_usd)
-    if (!montoUSD || montoUSD <= 0) return setError('Indique el monto en dólares.')
+    const descuentoUSD = Number(pagoEmpleado.descuento_usd) || 0
+
+    if (!montoUSD || montoUSD <= 0) return setError('Indique el salario bruto en dólares.')
+    if (descuentoUSD > montoUSD) return setError('El descuento no puede ser mayor al salario bruto.')
+    if (descuentoUSD > Number(pagoEmpleado.persona.advance_balance)) return setError('El descuento no puede superar la deuda pendiente del trabajador.')
     if (!pagoEmpleado.account_id) return setError('Seleccione la cuenta de origen.')
 
-    const tasaEfectiva = Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 0
+    // La tasa debe ser la de la FECHA DEL PAGO, no la de hoy. Para pagos
+    // con fecha pasada en bolívares esto evita descuadrar el egreso.
+    // Si el usuario fijó una tasa manual, esa manda.
+    let tasaEfectiva = Number(pagoEmpleado.tasa_manual) || 0
+    if (!tasaEfectiva && pagoEmpleado.currency === 'VES') {
+      const { data: rd } = await supabase.rpc('rate_detail', {
+        p_date: pagoEmpleado.payment_date,
+      })
+      tasaEfectiva = rd?.tasa || 0
+      if (!tasaEfectiva) {
+        return setError(
+          `No hay tasa registrada para el ${pagoEmpleado.payment_date}. ` +
+            'Regístrela en Ajustes o fije una tasa manual para pagar en bolívares.'
+        )
+      }
+    }
 
-    const montoPago =
-      pagoEmpleado.currency === 'USD'
+    const montoPagoBruto = pagoEmpleado.currency === 'USD'
         ? montoUSD
         : Number(pagoEmpleado.amount) || montoUSD * tasaEfectiva
 
-    if (!montoPago || montoPago <= 0) {
-      return setError('No se pudo calcular el monto. Verifique la tasa.')
+    if (!montoPagoBruto || montoPagoBruto <= 0) {
+      return setError('No se pudo calcular el monto bruto. Verifique la tasa.')
     }
+
+    const descuentoPago = pagoEmpleado.currency === 'USD'
+        ? descuentoUSD
+        : descuentoUSD * (montoPagoBruto / montoUSD) 
 
     setEnviando(true)
     try {
@@ -669,24 +716,26 @@ export default function Tesoreria() {
         (c) => c.name.toLowerCase().includes('nómina') || c.name.toLowerCase().includes('personal') || c.name.toLowerCase().includes('sueldos')
       )
 
-      const { data: idGasto, error: err } = await supabase.rpc('register_expense', {
+      // Pago de nómina ATÓMICO: el gasto del salario bruto y la deducción de
+      // préstamo ocurren dentro de una sola transacción en el servidor. Si algo
+      // falla, no queda un gasto registrado sin su deducción (antes se hacían
+      // 3 llamadas sueltas y un fallo intermedio descuadraba la deuda).
+      const { data: idGasto, error: err } = await supabase.rpc('pagar_nomina', {
+        p_payee_id: pagoEmpleado.persona.id,
         p_account_id: pagoEmpleado.account_id,
-        p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
-        p_amount: montoPago,
+        p_amount: montoPagoBruto,
+        p_amount_usd: montoUSD,
         p_currency: pagoEmpleado.currency,
-        p_expense_date: pagoEmpleado.payment_date,
-        p_category_id: catNomina ? catNomina.id : null,
-        p_supplier: pagoEmpleado.persona.full_name,
+        p_exchange_rate: pagoEmpleado.currency === 'VES' ? tasaEfectiva : 1,
+        p_payment_date: pagoEmpleado.payment_date,
+        p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
         p_invoice_ref: pagoEmpleado.operacion.trim() || null,
         p_receipt_url: rutaRecibo,
-        p_rate: pagoEmpleado.currency === 'VES' ? tasaEfectiva : null,
+        p_category_id: catNomina ? catNomina.id : null,
+        p_deduction_usd: descuentoUSD > 0 ? descuentoUSD : 0,
+        p_deduction_amount: descuentoUSD > 0 ? descuentoPago : 0,
       })
       if (err) throw err
-
-      await supabase
-        .from('expenses')
-        .update({ payee_id: pagoEmpleado.persona.id })
-        .eq('id', idGasto)
 
       setAviso(`Pago registrado a ${pagoEmpleado.persona.full_name}.`)
       const queridoRecibo = pagoEmpleado.generar_recibo
@@ -701,7 +750,12 @@ export default function Tesoreria() {
           .eq('id', idGasto)
           .single()
         if (gasto) {
-          setTimeout(() => descargarRecibo({ ...gasto, payee_id: personaPago.id }), 400)
+          setTimeout(() => descargarRecibo({ 
+            ...gasto, 
+            payee_id: personaPago.id,
+            deduction_usd: descuentoUSD > 0 ? descuentoUSD : null,
+            deduction_amount: descuentoUSD > 0 ? descuentoPago : null,
+          }), 400)
         }
       }
     } catch (err) {
@@ -710,8 +764,6 @@ export default function Tesoreria() {
       setEnviando(false)
     }
   }
-
-  // ------------------------------------------- movimientos y saldo inicial
 
   const guardarMovimiento = async (e) => {
     e.preventDefault()
@@ -773,8 +825,6 @@ export default function Tesoreria() {
     }
   }
 
-  // ---------------------------------------------------- recibos e historial
-
   const descargarRecibo = async (gasto) => {
     setError(null)
     try {
@@ -809,16 +859,32 @@ export default function Tesoreria() {
     try {
       const { data, error: err } = await supabase
         .from('expenses')
-        .select(
-          'id, expense_date, description, amount, currency, amount_usd, accounts:account_id (name)'
-        )
+        .select(`
+          id, expense_date, description, amount, currency, amount_usd, 
+          accounts:account_id (name),
+          payee_advances (amount)
+        `)
         .eq('payee_id', persona.id)
         .gte('expense_date', desdeStr)
         .order('expense_date', { ascending: false })
 
       if (err) throw err
 
-      setHistorial({ persona, pagos: data || [], desde: desdeStr, hasta: hastaStr })
+      const pagosFormateados = (data || []).map(p => {
+        // Buscamos si este gasto tuvo una deducción asociada (monto negativo en auditoría)
+        const adv = p.payee_advances?.find(a => Number(a.amount) < 0)
+        const deductionUsd = adv ? Math.abs(Number(adv.amount)) : 0
+        const rate = Number(p.amount_usd) > 0 ? Number(p.amount) / Number(p.amount_usd) : 1
+        const deductionAmount = deductionUsd * rate
+
+        return {
+            ...p,
+            deduction_usd: deductionUsd > 0 ? deductionUsd : null,
+            deduction_amount: deductionUsd > 0 ? deductionAmount : null
+        }
+      })
+
+      setHistorial({ persona, pagos: pagosFormateados, desde: desdeStr, hasta: hastaStr })
       setPanel('historial')
     } catch (err) {
       setError(mensajeError(err))
@@ -848,8 +914,6 @@ export default function Tesoreria() {
     }
   }
 
-  // ------------------------------------------------------------------ vista
-
   if (cargando) return <Cargador texto="Cargando tesorería…" />
 
   const totalUSD = cuentas
@@ -866,7 +930,6 @@ export default function Tesoreria() {
   return (
     <>
       <style>{`
-        /* Hacemos que las cuentas ocupen 100% en móvil y 2 columnas en PC */
         .grid-cuentas {
           display: grid;
           grid-template-columns: 1fr !important;
@@ -878,7 +941,6 @@ export default function Tesoreria() {
           }
         }
         @media (max-width: 768px) {
-          /* FIX: Cabeceras y paneles en móvil */
           .card-header-flex {
             flex-direction: column !important;
             align-items: flex-start !important;
@@ -951,7 +1013,7 @@ export default function Tesoreria() {
             className={`pestana ${pestana === p.id ? 'activa' : ''}`}
             onClick={() => {
               setPestana(p.id)
-              setBusqueda('') // Limpiamos la búsqueda al cambiar de pestaña
+              setBusqueda('') 
             }}
           >
             {p.texto}
@@ -959,7 +1021,6 @@ export default function Tesoreria() {
         ))}
       </div>
 
-      {/* ------------------------------------------------------- cuentas */}
       {pestana === 'cuentas' && (
         <div className="card">
           <div className="card-header-flex">
@@ -1092,7 +1153,6 @@ export default function Tesoreria() {
         </div>
       )}
 
-      {/* -------------------------------------------------------- gastos */}
       {pestana === 'gastos' && (
         <div className="card">
           <div className="card-header-flex">
@@ -1186,7 +1246,6 @@ export default function Tesoreria() {
         </div>
       )}
 
-      {/* --------------------------------------------- personal / proveedores */}
       {(pestana === 'personal' || pestana === 'proveedores') && (
         <div className="card">
           <div className="card-header-flex">
@@ -1268,6 +1327,11 @@ export default function Tesoreria() {
                         {etiqueta(p.salary_period)}
                       </small>
                     )}
+                    {Number(p.advance_balance) > 0 && (
+                      <span className="badge badge-rechazado" style={{ marginTop: '4px', display: 'inline-block' }}>
+                        Debe: {fmtUSD(p.advance_balance)}
+                      </span>
+                    )}
                   </div>
                   <div className="list-item-derecha" onClick={(e) => e.stopPropagation()}>
                     {!p.is_active && <span className="chip chip-inactivo">Inactivo</span>}
@@ -1279,6 +1343,18 @@ export default function Tesoreria() {
                             texto: 'Registrar pago',
                             oculto: !p.is_active,
                             onClick: () => abrirPagoEmpleado(p),
+                          },
+                          {
+                            icono: '💸',
+                            texto: 'Otorgar préstamo / adelanto',
+                            oculto: !p.is_active || p.kind !== 'empleado',
+                            onClick: () => setEmpleadoAdelanto({ ...p, modo: 'otorgar' }),
+                          },
+                          {
+                            icono: '💰',
+                            texto: 'Recibir abono a deuda',
+                            oculto: !p.is_active || p.kind !== 'empleado' || !(Number(p.advance_balance) > 0),
+                            onClick: () => setEmpleadoAdelanto({ ...p, modo: 'abonar' }),
                           },
                           {
                             icono: '📋',
@@ -1324,7 +1400,6 @@ export default function Tesoreria() {
         </div>
       )}
 
-      {/* --------------------------------------------------- compromisos */}
       {pestana === 'compromisos' && (
         <div className="card">
           <div className="card-header-flex">
@@ -1439,8 +1514,6 @@ export default function Tesoreria() {
           )}
         </div>
       )}
-
-      {/* ------------------------------------------------------- paneles */}
 
       <Panel
         abierto={panel === 'cuenta'}
@@ -1596,12 +1669,11 @@ export default function Tesoreria() {
           )}
           <div className="form-group">
             <label>Concepto *</label>
-            <input
-              className="form-control"
+            <AutocompletarConcepto
               value={formGasto.description}
-              onChange={(e) => setFormGasto({ ...formGasto, description: e.target.value })}
+              onChange={(texto) => setFormGasto({ ...formGasto, description: texto })}
+              sugerencias={conceptosUsados}
               placeholder="Compra de bombillos para la plaza"
-              autoFocus
             />
           </div>
 
@@ -1861,7 +1933,6 @@ export default function Tesoreria() {
         </form>
       </Panel>
 
-      {/* ------------------------------------------------------ categorías */}
       <Panel
         abierto={panel === 'categorias'}
         titulo="Categorías de gasto"
@@ -2319,12 +2390,12 @@ export default function Tesoreria() {
 
           <div className="form-group">
             <label>Concepto *</label>
-            <input
-              className="form-control"
+            <AutocompletarConcepto
               value={formCompromiso.description}
-              onChange={(e) =>
-                setFormCompromiso({ ...formCompromiso, description: e.target.value })
+              onChange={(texto) =>
+                setFormCompromiso({ ...formCompromiso, description: texto })
               }
+              sugerencias={conceptosUsados}
               placeholder="Sueldo semanal de mantenimiento"
             />
           </div>
@@ -2530,10 +2601,10 @@ export default function Tesoreria() {
                 <strong>{historial.pagos.length}</strong>
               </div>
               <div>
-                <small>Total pagado</small>
+                <small>Total NETO pagado</small>
                 <strong>
                   {fmtUSD(
-                    historial.pagos.reduce((s, p) => s + Number(p.amount_usd || 0), 0)
+                    historial.pagos.reduce((s, p) => s + (Number(p.amount_usd || 0) - (Number(p.deduction_usd) || 0)), 0)
                   )}
                 </strong>
               </div>
@@ -2553,7 +2624,7 @@ export default function Tesoreria() {
                       <tr>
                         <th>Fecha</th>
                         <th>Concepto</th>
-                        <th className="der">Monto</th>
+                        <th className="der">Monto NETO</th>
                         <th />
                       </tr>
                     </thead>
@@ -2563,12 +2634,15 @@ export default function Tesoreria() {
                           <td>{fmtFecha(p.expense_date)}</td>
                           <td>
                             {p.description}
-                            <small className="bloque">{p.accounts?.name || '—'}</small>
+                            {Number(p.deduction_usd) > 0 && (
+                               <small className="bloque texto-error" style={{marginTop: 2}}>Deducción: -{fmtUSD(p.deduction_usd)}</small>
+                            )}
+                            <small className="bloque" style={{color: 'var(--text-muted)'}}>{p.accounts?.name || '—'}</small>
                           </td>
                           <td className="der">
-                            <strong>{fmtUSD(p.amount_usd)}</strong>
+                            <strong>{fmtUSD(Number(p.amount_usd) - (Number(p.deduction_usd) || 0))}</strong>
                             {p.currency === 'VES' && (
-                              <small className="bloque">{fmtMoneda(p.amount, 'VES')}</small>
+                              <small className="bloque">{fmtMoneda(Number(p.amount) - (Number(p.deduction_amount) || 0), 'VES')}</small>
                             )}
                           </td>
                           <td className="der">
@@ -2604,7 +2678,6 @@ export default function Tesoreria() {
         )}
       </Panel>
 
-      {/* ------------------------------------------------ pago a empleado */}
       <Panel
         abierto={panel === 'pagar-empleado'}
         titulo={`Pagar a ${pagoEmpleado.persona?.full_name || ''}`}
@@ -2626,6 +2699,16 @@ export default function Tesoreria() {
                 <div>
                   <small>Frecuencia</small>
                   <strong>{etiqueta(pagoEmpleado.persona.salary_period)}</strong>
+                </div>
+              </div>
+            )}
+
+            {Number(pagoEmpleado.persona.advance_balance) > 0 && (
+              <div className="alerta alerta-advertencia">
+                <span aria-hidden="true">⚠️</span>
+                <div>
+                  <strong>Atención: Este trabajador tiene una deuda pendiente.</strong>
+                  <p>Adelantos acumulados por descontar: <strong>{fmtUSD(pagoEmpleado.persona.advance_balance)}</strong></p>
                 </div>
               </div>
             )}
@@ -2706,7 +2789,7 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>Monto en dólares *</label>
+              <label>Salario Bruto en dólares *</label>
               <input
                 type="number"
                 step="0.01"
@@ -2726,6 +2809,47 @@ export default function Tesoreria() {
                 }}
               />
             </div>
+
+            {Number(pagoEmpleado.persona.advance_balance) > 0 && (
+              <div className="form-group">
+                <label>
+                  Descuento por préstamo (USD)
+                  <IconoAyuda texto={`No puede descontar más del salario bruto ni más de lo que debe (${fmtUSD(pagoEmpleado.persona.advance_balance)}).`} />
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={Math.min(Number(pagoEmpleado.amount_usd) || 0, Number(pagoEmpleado.persona.advance_balance) || 0)}
+                  className="form-control"
+                  value={pagoEmpleado.descuento_usd}
+                  onChange={(e) => {
+                    let val = e.target.value
+                    const maximoPermitido = Math.min(Number(pagoEmpleado.amount_usd) || 0, Number(pagoEmpleado.persona.advance_balance) || 0)
+                    if (Number(val) > maximoPermitido) {
+                      val = String(maximoPermitido)
+                    }
+                    setPagoEmpleado({ ...pagoEmpleado, descuento_usd: val })
+                  }}
+                  placeholder="0.00"
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.85rem' }}>
+                  <span className="texto-ayuda">Deuda actual: {fmtUSD(pagoEmpleado.persona.advance_balance)}</span>
+                  {Number(pagoEmpleado.descuento_usd) > 0 && (
+                    <strong style={{ color: '#2563eb' }}>
+                      Quedará debiendo: {fmtUSD(Number(pagoEmpleado.persona.advance_balance) - Number(pagoEmpleado.descuento_usd))}
+                    </strong>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {Number(pagoEmpleado.descuento_usd) > 0 && (
+              <div className="conversion-linea destacada" style={{ marginTop: '8px', marginBottom: '16px' }}>
+                <span>Monto NETO a pagar al trabajador:</span>
+                <strong>{fmtUSD(Number(pagoEmpleado.amount_usd) - Number(pagoEmpleado.descuento_usd))}</strong>
+              </div>
+            )}
 
             {pagoEmpleado.currency === 'VES' && (
               <div className="conversion-bloque">
@@ -2756,7 +2880,7 @@ export default function Tesoreria() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Monto a pagar (Bs.)</label>
+                    <label>Monto bruto a procesar (Bs.)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -2770,8 +2894,21 @@ export default function Tesoreria() {
                     />
                   </div>
                 </div>
+                
+                {Number(pagoEmpleado.descuento_usd) > 0 && (
+                  <div className="conversion-linea destacada" style={{ marginTop: '8px' }}>
+                    <span>Neto a depositar (Bs.):</span>
+                    <strong>
+                      Bs. {fmtNumero(
+                        (Number(pagoEmpleado.amount) || (Number(pagoEmpleado.amount_usd) * (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 1))) -
+                        (Number(pagoEmpleado.descuento_usd) * (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 1))
+                      )}
+                    </strong>
+                  </div>
+                )}
+
                 {tasaHoy?.tasa && (
-                  <div className="conversion-linea">
+                  <div className="conversion-linea" style={{ marginTop: '8px' }}>
                     <span>Tasa de hoy ({fmtFecha(tasaHoy.fecha)})</span>
                     <strong>Bs. {fmtNumero(tasaHoy.tasa)}</strong>
                   </div>
@@ -2886,7 +3023,6 @@ export default function Tesoreria() {
         )}
       </Panel>
 
-      {/* ------------------------------------------- comisiones y ajustes */}
       <Panel
         abierto={panel === 'movimiento'}
         titulo="Comisión o ajuste de cuenta"
@@ -2949,8 +3085,11 @@ export default function Tesoreria() {
 
             <div className="form-group">
               <label>
-                Monto *
-                <IconoAyuda texto="Siempre debe ser un valor positivo. El 'Tipo de movimiento' elegido arriba define automáticamente si este monto se sumará o se restará a la cuenta." />
+                Monto{' '}
+                {formMovimiento.account_id
+                  ? `(${cuentas.find((c) => c.id === formMovimiento.account_id)?.currency || ''}) *`
+                  : '*'}
+                <IconoAyuda texto="El monto va en la MONEDA DE LA CUENTA elegida (una cuenta en bolívares espera bolívares; una en dólares espera dólares). Siempre positivo: el 'Tipo de movimiento' define si suma o resta." />
               </label>
               <input
                 type="number"
@@ -2983,7 +3122,6 @@ export default function Tesoreria() {
         </form>
       </Panel>
 
-      {/* ---------------------------------------------------- saldo inicial */}
       <Panel
         abierto={panel === 'saldo-inicial'}
         titulo={`Saldo inicial · ${saldoInicial.cuenta?.name || ''}`}
@@ -3015,6 +3153,17 @@ export default function Tesoreria() {
           </div>
         </form>
       </Panel>
+
+      <ModalAdelanto 
+        abierto={Boolean(empleadoAdelanto)} 
+        empleado={empleadoAdelanto}
+        onCerrar={() => setEmpleadoAdelanto(null)}
+        onCompletado={(msj) => {
+          setEmpleadoAdelanto(null)
+          setAviso(msj)
+          cargar()
+        }}
+      />
 
       <LibroCuenta
         cuentaId={libroCuenta}
