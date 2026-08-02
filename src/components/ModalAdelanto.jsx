@@ -1,44 +1,53 @@
 import { useState, useEffect } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { Panel } from './UI'
-import { fmtUSD } from '../lib/formato'
+import { fmtUSD, hoy } from '../lib/formato'
 
 export default function ModalAdelanto({ abierto, empleado, onCerrar, onCompletado }) {
   const [cuentas, setCuentas] = useState([])
-  const [tasaHoy, setTasaHoy] = useState(null)
+  const [tasaFecha, setTasaFecha] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState(null)
 
   const [cuentaId, setCuentaId] = useState('')
   const [montoIngresado, setMontoIngresado] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [fecha, setFecha] = useState(hoy())
 
   const modo = empleado?.modo || 'otorgar'
   const esAbono = modo === 'abonar'
 
   useEffect(() => {
     if (!abierto) return
-    const cargarDatos = async () => {
-      const [resC, resT] = await Promise.all([
-        supabase.from('accounts').select('id, name, currency').eq('is_active', true),
-        supabase.rpc('rate_health')
-      ])
-      if (resC.data) setCuentas(resC.data)
-      if (resT.data) setTasaHoy(resT.data)
+    const cargarCuentas = async () => {
+      const { data } = await supabase.from('accounts').select('id, name, currency').eq('is_active', true)
+      if (data) setCuentas(data)
     }
-    cargarDatos()
+    cargarCuentas()
     setCuentaId('')
     setMontoIngresado('')
+    setFecha(hoy())
     setDescripcion(esAbono ? 'Abono a préstamo' : 'Préstamo / Adelanto de nómina')
     setError(null)
   }, [abierto, esAbono])
+
+  // La tasa se resuelve según la FECHA elegida (no la de hoy), para que un
+  // préstamo con fecha pasada use la tasa correcta de ese día.
+  useEffect(() => {
+    if (!abierto || !fecha) return
+    let cancelado = false
+    supabase.rpc('rate_detail', { p_date: fecha }).then(({ data }) => {
+      if (!cancelado) setTasaFecha(data || null)
+    })
+    return () => { cancelado = true }
+  }, [abierto, fecha])
 
   const cuenta = cuentas.find(c => c.id === cuentaId)
   const isVES = cuenta?.currency === 'VES'
 
   let montoUSD = 0
   let montoVES = 0
-  let tasa = tasaHoy?.tasa || 1
+  let tasa = tasaFecha?.tasa || 1
 
   if (montoIngresado && !isNaN(montoIngresado)) {
     if (isVES) {
@@ -53,8 +62,9 @@ export default function ModalAdelanto({ abierto, empleado, onCerrar, onCompletad
   const procesar = async (e) => {
     e.preventDefault()
     if (!cuentaId) return setError('Seleccione la cuenta de origen/destino.')
+    if (!fecha) return setError('Seleccione la fecha de la operación.')
     if (!montoUSD || montoUSD <= 0) return setError('Ingrese un monto válido.')
-    if (isVES && !tasaHoy?.tasa) return setError('No hay tasa registrada hoy. Cárguela en ajustes para operar con bolívares.')
+    if (isVES && !tasaFecha?.tasa) return setError('No hay tasa registrada para esa fecha. Elija otra fecha o cárguela en ajustes para operar con bolívares.')
 
     if (esAbono && montoUSD > Number(empleado.advance_balance)) {
         return setError(`El abono no puede superar la deuda actual de ${fmtUSD(empleado.advance_balance)}.`)
@@ -73,7 +83,8 @@ export default function ModalAdelanto({ abierto, empleado, onCerrar, onCompletad
         p_amount_usd: montoUSD,
         p_currency: cuenta.currency,
         p_exchange_rate: isVES ? tasa : 1,
-        p_description: descripcion.trim()
+        p_description: descripcion.trim(),
+        p_fecha: fecha
       })
 
       if (err) throw err
@@ -107,6 +118,20 @@ export default function ModalAdelanto({ abierto, empleado, onCerrar, onCompletad
 
       <form onSubmit={procesar}>
         <div className="form-group">
+          <label>Fecha de la operación *</label>
+          <input
+            type="date"
+            className="form-control"
+            value={fecha}
+            max={hoy()}
+            onChange={(e) => setFecha(e.target.value)}
+          />
+          <small className="texto-ayuda">
+            Puede registrar un préstamo o abono con fecha pasada; se usará la tasa oficial de ese día.
+          </small>
+        </div>
+
+        <div className="form-group">
           <label>{esAbono ? 'Cuenta donde ingresó el dinero *' : 'Cuenta de origen *'}</label>
           <select
             className="form-control"
@@ -137,7 +162,7 @@ export default function ModalAdelanto({ abierto, empleado, onCerrar, onCompletad
           {!cuentaId && <small className="texto-ayuda">Seleccione la cuenta primero.</small>}
         </div>
 
-        {isVES && tasaHoy?.tasa && (
+        {isVES && tasaFecha?.tasa && (
           <div className="conversion-linea destacada" style={{ marginBottom: 16 }}>
             <span>Equivalente contable (USD):</span>
             <strong>{fmtUSD(montoUSD)}</strong>
