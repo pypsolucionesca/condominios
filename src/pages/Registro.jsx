@@ -12,6 +12,7 @@ export default function Registro() {
   const [error, setError] = useState(null)
   const [exito, setExito] = useState(false)
   const [captchaToken, setCaptchaToken] = useState(null)
+  const [captchaNoDisponible, setCaptchaNoDisponible] = useState(false)
 
   const registrar = async (e) => {
     e.preventDefault()
@@ -21,7 +22,7 @@ export default function Registro() {
     if (!form.adminName.trim()) return setError('El nombre del administrador es obligatorio.')
     if (form.password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres.')
     if (!form.aceptaTerminos) return setError('Debe aceptar los Términos y Condiciones para registrarse.')
-    if (!captchaToken) return setError('Por favor complete la verificación de seguridad.')
+    if (!captchaToken && !captchaNoDisponible) return setError('Por favor complete la verificación de seguridad.')
 
     setCargando(true)
     try {
@@ -183,13 +184,14 @@ export default function Registro() {
                 accion="registro"
                 onToken={setCaptchaToken}
                 onExpire={() => setCaptchaToken(null)}
+                onNoDisponible={() => setCaptchaNoDisponible(true)}
               />
             </div>
 
             <button 
               className="btn btn-primary" 
               style={{ width: '100%', padding: '12px', fontSize: '1.1rem', marginTop: 8 }} 
-              disabled={cargando || !captchaToken}
+              disabled={cargando || (!captchaToken && !captchaNoDisponible)}
             >
               {cargando ? 'Configurando plataforma...' : 'Crear cuenta'}
             </button>

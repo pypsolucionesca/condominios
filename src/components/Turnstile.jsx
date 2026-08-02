@@ -1,39 +1,47 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Widget de verificación humana de Cloudflare Turnstile.
+ * Widget de verificación humana de Cloudflare Turnstile — TOLERANTE A FALLOS.
  *
- * Carga el script de Cloudflare una sola vez y renderiza el widget. Cuando el
- * usuario pasa la verificación, entrega un token de un solo uso vía onToken(token).
- * Ese token se envía a Supabase Auth (options.captchaToken) para probar que
- * detrás hay una persona y no un bot.
+ * Filosofía: el captcha SUMA seguridad, pero NUNCA debe impedir que un usuario
+ * legítimo inicie sesión. Por eso, si la clave no está configurada, o el script
+ * de Cloudflare no carga (bloqueadores, red móvil, etc.), este componente avisa
+ * al padre mediante onNoDisponible() para que el login continúe sin captcha,
+ * en lugar de romperse o bloquear el botón.
  *
- * La clave del sitio (site key) se lee de la variable de entorno
- * VITE_TURNSTILE_SITE_KEY. Es una clave PÚBLICA (va en el frontend); la clave
- * secreta se configura en el panel de Supabase, nunca aquí.
+ * La clave se lee de VITE_TURNSTILE_SITE_KEY (clave pública). La clave secreta
+ * se configura en Supabase, nunca aquí.
  *
  * Props:
- *   onToken(token)   → se llama con el token cuando la verificación pasa.
- *   onExpire()       → opcional; el token caducó, hay que rehacer la verificación.
- *   accion           → opcional; etiqueta para distinguir "registro" de "login".
+ *   onToken(token)      → token cuando la verificación pasa.
+ *   onExpire()          → el token caducó.
+ *   onNoDisponible()    → el captcha no se pudo cargar; el login debe continuar sin él.
+ *   accion              → etiqueta opcional (registro / login).
  */
-export default function Turnstile({ onToken, onExpire, accion }) {
+export default function Turnstile({ onToken, onExpire, onNoDisponible, accion }) {
   const contenedorRef = useRef(null)
   const widgetIdRef = useRef(null)
-  const [errorCarga, setErrorCarga] = useState(false)
+  const [estado, setEstado] = useState('cargando') // cargando | listo | no_disponible
 
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY
 
   useEffect(() => {
+    let cancelado = false
+
+    const marcarNoDisponible = () => {
+      if (cancelado) return
+      setEstado('no_disponible')
+      if (typeof onNoDisponible === 'function') onNoDisponible()
+    }
+
+    // Sin clave configurada -> el login sigue sin captcha.
     if (!siteKey) {
-      // Sin clave configurada no se puede renderizar; se avisa en consola
-      // para el desarrollador, pero no se rompe la pantalla.
-      console.warn('VITE_TURNSTILE_SITE_KEY no está configurada; el captcha no se mostrará.')
-      setErrorCarga(true)
+      marcarNoDisponible()
       return
     }
 
-    let cancelado = false
+    // Si el script tarda demasiado, no dejamos al usuario atrapado.
+    const timeout = setTimeout(marcarNoDisponible, 8000)
 
     const cargarScript = () =>
       new Promise((resolve, reject) => {
@@ -57,19 +65,33 @@ export default function Turnstile({ onToken, onExpire, accion }) {
     cargarScript()
       .then(() => {
         if (cancelado || !contenedorRef.current || !window.turnstile) return
-        widgetIdRef.current = window.turnstile.render(contenedorRef.current, {
-          sitekey: siteKey,
-          action: accion || undefined,
-          callback: (token) => onToken?.(token),
-          'expired-callback': () => onExpire?.(),
-          'error-callback': () => setErrorCarga(true),
-          theme: 'light',
-        })
+        try {
+          widgetIdRef.current = window.turnstile.render(contenedorRef.current, {
+            sitekey: siteKey,
+            action: accion || undefined,
+            callback: (token) => {
+              clearTimeout(timeout)
+              if (!cancelado) {
+                setEstado('listo')
+                if (typeof onToken === 'function') onToken(token)
+              }
+            },
+            'expired-callback': () => {
+              if (typeof onExpire === 'function') onExpire()
+            },
+            'error-callback': marcarNoDisponible,
+            theme: 'light',
+          })
+          if (!cancelado) setEstado('listo')
+        } catch {
+          marcarNoDisponible()
+        }
       })
-      .catch(() => setErrorCarga(true))
+      .catch(marcarNoDisponible)
 
     return () => {
       cancelado = true
+      clearTimeout(timeout)
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current)
@@ -78,15 +100,9 @@ export default function Turnstile({ onToken, onExpire, accion }) {
         }
       }
     }
-  }, [siteKey, accion, onToken, onExpire])
+  }, [siteKey, accion, onToken, onExpire, onNoDisponible])
 
-  if (errorCarga) {
-    return (
-      <small className="texto-ayuda" style={{ display: 'block', margin: '8px 0' }}>
-        No se pudo cargar la verificación de seguridad. Recargue la página e intente de nuevo.
-      </small>
-    )
-  }
+  if (estado === 'no_disponible') return null
 
   return <div ref={contenedorRef} style={{ margin: '12px 0', minHeight: 65 }} />
 }
