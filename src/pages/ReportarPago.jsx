@@ -390,46 +390,52 @@ export default function ReportarPago() {
           )}
 
           {distribucion && (
-            <div className="distribucion-pago">
-              <div className="distribucion-titulo">
-                Cómo se aplicará su pago{' '}
-                <small>(primero los meses más antiguos)</small>
+            <div className="form-group">
+              <label>
+                Avisos que cubre su pago{' '}
+                <small className="texto-ayuda">(se aplican del mes más antiguo al más nuevo)</small>
+              </label>
+              <div className="lista-avisos">
+                {distribucion.filas.map((f) => {
+                  // La casilla está marcada si el pago cubre (total o parcialmente)
+                  // este aviso. Es FIJA: refleja la regla antiguo→nuevo y no se
+                  // puede desmarcar (el residente no elige saltar meses).
+                  const marcado = f.cubierto || f.parcial
+                  return (
+                    <div
+                      key={f.id}
+                      className={`aviso-fila ${marcado ? 'marcado' : ''}`}
+                      style={{ opacity: marcado ? 1 : 0.55 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        readOnly
+                        disabled
+                        title="Los pagos se aplican automáticamente del mes más antiguo al más nuevo"
+                      />
+                      <div style={{ flex: 1 }}>
+                        <strong>{f.periodo}</strong>
+                        <div className="texto-ayuda">Aviso N° {f.numero}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {f.cubierto ? (
+                          <span className="chip chip-exito">Se cubre · {fmtUSD(f.deuda)}</span>
+                        ) : f.parcial ? (
+                          <span className="chip chip-aviso">
+                            Abona {fmtUSD(f.aplicado)} de {fmtUSD(f.deuda)}
+                          </span>
+                        ) : (
+                          <span className="chip">Queda pendiente · {fmtUSD(f.deuda)}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-              <ul className="distribucion-lista">
-                {distribucion.filas.map((f) => (
-                  <li
-                    key={f.id}
-                    className={
-                      f.cubierto
-                        ? 'distribucion-fila cubierta'
-                        : f.parcial
-                        ? 'distribucion-fila parcial'
-                        : 'distribucion-fila sin-cubrir'
-                    }
-                  >
-                    <div className="distribucion-mes">
-                      <strong>Aviso N° {f.numero}</strong>
-                      <small>{f.periodo}</small>
-                    </div>
-                    <div className="distribucion-montos">
-                      {f.cubierto ? (
-                        <span className="chip chip-exito">Se cubre · {fmtUSD(f.deuda)}</span>
-                      ) : f.parcial ? (
-                        <span className="chip chip-aviso">
-                          Abona {fmtUSD(f.aplicado)} de {fmtUSD(f.deuda)}
-                        </span>
-                      ) : (
-                        <span className="chip">Queda pendiente · {fmtUSD(f.deuda)}</span>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
               <div className="distribucion-resumen">
                 {distribucion.cubiertos > 0 && (
-                  <span>
-                    Cubre {distribucion.cubiertos} aviso(s) completo(s).{' '}
-                  </span>
+                  <span>Cubre {distribucion.cubiertos} aviso(s) completo(s). </span>
                 )}
                 {distribucion.sobra >= 0.01 && (
                   <span className="texto-exito">

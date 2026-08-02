@@ -46,7 +46,9 @@ export default function Pagos() {
           .select('id, name, kind, currency')
           .eq('is_active', true)
           .order('name'),
-        supabase.from('units').select('id, code').eq('is_active', true).order('code'),
+        supabase.from('units')
+          .select('id, code, unit_type, business_name, phone')
+          .eq('is_active', true).order('code'),
         supabase
           .from('unit_members')
           .select('unit_id, profiles:user_id (full_name)'),
@@ -56,10 +58,24 @@ export default function Pagos() {
       if (rC.error) throw rC.error
       if (rM.error) throw rM.error
 
+      // Enriquecer cada unidad con el nombre del residente principal, para que
+      // el selector de pago pueda mostrarlo y buscar por él.
+      const miembros = rM.data || []
+      const nombrePorUnidad = {}
+      for (const m of miembros) {
+        if (m.unit_id && m.profiles?.full_name && !nombrePorUnidad[m.unit_id]) {
+          nombrePorUnidad[m.unit_id] = m.profiles.full_name
+        }
+      }
+      const unidadesEnriquecidas = (rU.data || []).map((u) => ({
+        ...u,
+        residente: nombrePorUnidad[u.id] || null,
+      }))
+
       setPagos(rP.data || [])
       setCuentas(rC.data || [])
-      setUnidades(rU.data || [])
-      setMiembros(rM.data || [])
+      setUnidades(unidadesEnriquecidas)
+      setMiembros(miembros)
       setError(null)
     } catch (err) {
       setError(mensajeError(err))

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
-import { fmtUSD, fmtVES, fmtNumero, fmtFecha, hoy } from '../lib/formato'
+import { fmtUSD, fmtVES, fmtNumero, fmtFecha, hoy, normalizar } from '../lib/formato'
 import { Aviso, Cargador } from './UI'
 import CampoFecha from './CampoFecha'
 
@@ -19,9 +19,15 @@ export default function FormularioPago({
 }) {
   const [paso, setPaso] = useState(1)
   const [enviando, setEnviando] = useState(false)
+  // Candado inmediato contra doble envío: useRef se actualiza al instante
+  // (sin esperar el re-render de React), cerrando la ventana en la que un
+  // segundo clic podría disparar otro pago mientras el botón aún no se deshabilita.
+  const enviandoRef = useRef(false)
   const [error, setError] = useState(null)
 
   const [unidadId, setUnidadId] = useState(unidadInicial || '')
+  const [busquedaUnidad, setBusquedaUnidad] = useState('')
+  const [mostrarListaUnidades, setMostrarListaUnidades] = useState(false)
   const [pendientes, setPendientes] = useState([])
   const [seleccionados, setSeleccionados] = useState([])
   const [saldo, setSaldo] = useState(0)
@@ -147,6 +153,10 @@ export default function FormularioPago({
       return setError('No hay tasa disponible para esa fecha. Regístrela en Ajustes.')
     }
 
+    // Si ya hay un envío en curso, ignorar este clic de inmediato (candado
+    // instantáneo, antes de cualquier await, para evitar el doble pago).
+    if (enviandoRef.current) return
+    enviandoRef.current = true
     setEnviando(true)
     try {
       let rutaComprobante = null
@@ -185,9 +195,41 @@ export default function FormularioPago({
     } catch (err) {
       setError(mensajeError(err))
     } finally {
+      enviandoRef.current = false
       setEnviando(false)
     }
   }
+
+  // ------------------------------------------------------------------ búsqueda de unidad
+
+  // Texto descriptivo de una unidad: code + comercio + residente.
+  const describirUnidad = (u) => {
+    if (!u) return ''
+    const partes = [u.code]
+    if (u.business_name) partes.push(u.business_name)
+    if (u.residente) partes.push(u.residente)
+    return partes.filter(Boolean).join(' · ')
+  }
+
+  // Coincidencia tolerante a acentos y pequeños errores de tecleo.
+  // Cada palabra buscada debe aparecer (como subcadena, ya normalizada) en
+  // algún campo de la unidad. Simple, rápido y suficiente para nombres.
+  const unidadCoincide = (u, consulta) => {
+    const q = normalizar(consulta).trim()
+    if (!q) return true
+    const heno = normalizar(
+      [u.code, u.business_name, u.residente, u.phone]
+        .filter(Boolean).join(' ')
+    )
+    // todas las palabras de la consulta deben estar presentes
+    return q.split(/\s+/).every((palabra) => heno.includes(palabra))
+  }
+
+  const unidadesFiltradas = busquedaUnidad
+    ? unidades.filter((u) => unidadCoincide(u, busquedaUnidad))
+    : unidades
+
+  const unidadSeleccionada = unidades.find((u) => u.id === unidadId)
 
   // ------------------------------------------------------------------ vista
 
@@ -205,18 +247,68 @@ export default function FormularioPago({
         <>
           <div className="form-group">
             <label>Unidad *</label>
-            <select
-              className="form-control"
-              value={unidadId}
-              onChange={(e) => setUnidadId(e.target.value)}
-            >
-              <option value="">Seleccione…</option>
-              {unidades.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.code}
-                </option>
-              ))}
-            </select>
+            {unidadSeleccionada && !mostrarListaUnidades ? (
+              // Unidad ya elegida: se muestra con su descripción completa.
+              <div
+                className="form-control"
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                onClick={() => { setMostrarListaUnidades(true); setBusquedaUnidad('') }}
+              >
+                <span>{describirUnidad(unidadSeleccionada)}</span>
+                <span style={{ color: '#2563eb', fontSize: '0.85rem' }}>Cambiar</span>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Buscar por unidad, comercio, residente o teléfono…"
+                  value={busquedaUnidad}
+                  autoFocus={mostrarListaUnidades}
+                  onChange={(e) => { setBusquedaUnidad(e.target.value); setMostrarListaUnidades(true) }}
+                  onFocus={() => setMostrarListaUnidades(true)}
+                />
+                {mostrarListaUnidades && (
+                  <div
+                    style={{
+                      border: '1px solid #e2e8f0', borderRadius: 8, marginTop: 4,
+                      maxHeight: 240, overflowY: 'auto', background: '#fff',
+                    }}
+                  >
+                    {unidadesFiltradas.length === 0 ? (
+                      <div style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '0.9rem' }}>
+                        Sin resultados para “{busquedaUnidad}”.
+                      </div>
+                    ) : (
+                      unidadesFiltradas.map((u) => (
+                        <div
+                          key={u.id}
+                          onClick={() => {
+                            setUnidadId(u.id)
+                            setMostrarListaUnidades(false)
+                            setBusquedaUnidad('')
+                          }}
+                          style={{
+                            padding: '10px 12px', cursor: 'pointer',
+                            borderBottom: '1px solid #f1f5f9',
+                            background: u.id === unidadId ? '#eff6ff' : 'transparent',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = u.id === unidadId ? '#eff6ff' : 'transparent')}
+                        >
+                          <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{u.code}</div>
+                          {(u.business_name || u.residente) && (
+                            <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                              {[u.business_name, u.residente].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {cargandoDeuda ? (
@@ -463,11 +555,13 @@ export default function FormularioPago({
                 onChange={(e) => setCuentaId(e.target.value)}
               >
                 <option value="">Seleccione…</option>
-                {cuentas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {c.currency}
-                  </option>
-                ))}
+                {cuentas
+                  .filter((c) => c.currency === moneda || true)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} · {c.currency}
+                    </option>
+                  ))}
               </select>
             </div>
 

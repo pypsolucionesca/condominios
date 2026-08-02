@@ -19,11 +19,14 @@ export default function Login() {
   // cuenta (eso podría usarse en contra del usuario); solo frena a los bots.
   const [fallos, setFallos] = useState(0)
   const [captchaToken, setCaptchaToken] = useState(null)
-  // Si el captcha no se puede cargar (clave no configurada, red, bloqueador),
-  // no exigimos verificación para no dejar a un usuario legítimo sin poder entrar.
+  // Supabase exige el token de captcha en CADA autenticación cuando la
+  // protección está activa. Por eso el captcha se muestra siempre (no solo
+  // tras fallos). Si no está disponible (clave no configurada o no carga),
+  // captchaNoDisponible pasa a true y el login continúa sin él.
   const [captchaNoDisponible, setCaptchaNoDisponible] = useState(false)
 
-  const requiereCaptcha = fallos >= FALLOS_PARA_CAPTCHA && !captchaNoDisponible
+  // El captcha se exige siempre que esté disponible.
+  const requiereCaptcha = !captchaNoDisponible
 
   const validarEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
 
@@ -39,9 +42,17 @@ export default function Login() {
 
     setEnviando(true)
 
-    if (modo === 'recuperar') {
-      const res = await recuperarContrasena(email)
+    // Supabase exige el token de captcha en recuperación y login por igual.
+    if (requiereCaptcha && !captchaToken) {
       setEnviando(false)
+      setError('Por favor complete la verificación de seguridad para continuar.')
+      return
+    }
+
+    if (modo === 'recuperar') {
+      const res = await recuperarContrasena(email, captchaToken)
+      setEnviando(false)
+      setCaptchaToken(null)
       if (res.ok) {
         setAviso('Si el correo está registrado, recibirá un enlace para restablecer su contraseña.')
         setModo('login')
@@ -54,12 +65,6 @@ export default function Login() {
     if (!password) {
       setEnviando(false)
       setError('Ingrese su contraseña.')
-      return
-    }
-
-    if (requiereCaptcha && !captchaToken) {
-      setEnviando(false)
-      setError('Por favor complete la verificación de seguridad para continuar.')
       return
     }
 
@@ -157,13 +162,13 @@ export default function Login() {
           {error && <div className="alerta alerta-error">{error}</div>}
           {aviso && <div className="alerta alerta-exito">{aviso}</div>}
 
-          {modo === 'login' && requiereCaptcha && (
+          {requiereCaptcha && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <small className="texto-ayuda" style={{ marginBottom: 4 }}>
                 Por seguridad, confirme que no es un robot.
               </small>
               <Turnstile
-                accion="login"
+                accion={modo === 'recuperar' ? 'recuperar' : 'login'}
                 onToken={setCaptchaToken}
                 onExpire={() => setCaptchaToken(null)}
                 onNoDisponible={() => setCaptchaNoDisponible(true)}
@@ -174,7 +179,7 @@ export default function Login() {
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={enviando || (modo === 'login' && requiereCaptcha && !captchaToken)}
+            disabled={enviando || (requiereCaptcha && !captchaToken)}
           >
             {enviando
               ? 'Procesando…'

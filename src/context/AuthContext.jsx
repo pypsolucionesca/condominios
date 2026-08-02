@@ -201,9 +201,10 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
-  const recuperarContrasena = async (email) => {
+  const recuperarContrasena = async (email, captchaToken) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
       redirectTo: `${window.location.origin}/restablecer`,
+      ...(captchaToken ? { captchaToken } : {}),
     })
     if (error) return { ok: false, error: mensajeError(error) }
     return { ok: true }
