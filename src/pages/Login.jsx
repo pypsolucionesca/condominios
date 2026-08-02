@@ -91,8 +91,9 @@ export default function Login() {
           >
             <img
               src="/logo-login.png"
+              alt="PyP Condominios"
               style={{
-                height: '180px',
+                height: '130px',
                 width: 'auto',
                 objectFit: 'contain',
                 display: 'block'
@@ -102,10 +103,7 @@ export default function Login() {
               }}
             />
           </div>
-          
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
-            PyP <span style={{ color: '#f97316' }}>Condominios</span>
-          </h1>
+
           <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, fontWeight: '500' }}>
             Sistema de Gestión y Finanzas
           </p>
