@@ -149,7 +149,7 @@ export default function Tesoreria() {
     setCargando(true)
     try {
       const [rC, rG, rCat, rP, rR, rT] = await Promise.all([
-        supabase.from('accounts_with_balance').select('*').order('name'),
+        supabase.from('accounts_with_balance').select('*').eq('condominium_id', perfil.condominium_id).order('name'),
         supabase
           .from('expenses')
           .select(
@@ -181,7 +181,7 @@ export default function Tesoreria() {
     } finally {
       setCargando(false)
     }
-  }, [])
+  }, [perfil])
 
   useEffect(() => {
     cargar()
