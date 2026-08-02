@@ -91,9 +91,8 @@ export default function Login() {
           >
             <img
               src="/logo-login.png"
-              alt="PyP Condominios"
               style={{
-                height: '130px',
+                height: '180px',
                 width: 'auto',
                 objectFit: 'contain',
                 display: 'block'
