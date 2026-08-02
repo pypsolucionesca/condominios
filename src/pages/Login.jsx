@@ -1,9 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import Turnstile from '../components/Turnstile'
-
-const FALLOS_PARA_CAPTCHA = 3
 
 export default function Login() {
   const { iniciarSesion, recuperarContrasena } = useAuth()
@@ -15,12 +12,6 @@ export default function Login() {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
-  // Tras varios intentos fallidos exigimos verificación humana. No bloquea la
-  // cuenta (eso podría usarse en contra del usuario); solo frena a los bots.
-  const [fallos, setFallos] = useState(0)
-  const [captchaToken, setCaptchaToken] = useState(null)
-
-  const requiereCaptcha = fallos >= FALLOS_PARA_CAPTCHA
 
   const validarEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
 
@@ -54,20 +45,9 @@ export default function Login() {
       return
     }
 
-    if (requiereCaptcha && !captchaToken) {
-      setEnviando(false)
-      setError('Por favor complete la verificación de seguridad para continuar.')
-      return
-    }
-
-    const res = await iniciarSesion(email, password, captchaToken)
+    const res = await iniciarSesion(email, password)
     setEnviando(false)
-    if (!res.ok) {
-      setError(res.error)
-      setFallos((n) => n + 1)
-      // El token de Turnstile es de un solo uso: se limpia para el próximo intento.
-      setCaptchaToken(null)
-    }
+    if (!res.ok) setError(res.error)
     // Si tiene éxito, AuthProvider redirige automáticamente.
   }
 
@@ -103,7 +83,10 @@ export default function Login() {
               }}
             />
           </div>
-
+          
+          <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+            PyP <span style={{ color: '#f97316' }}>Condominios</span>
+          </h1>
           <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, fontWeight: '500' }}>
             Sistema de Gestión y Finanzas
           </p>
@@ -154,24 +137,7 @@ export default function Login() {
           {error && <div className="alerta alerta-error">{error}</div>}
           {aviso && <div className="alerta alerta-exito">{aviso}</div>}
 
-          {modo === 'login' && requiereCaptcha && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <small className="texto-ayuda" style={{ marginBottom: 4 }}>
-                Por seguridad, confirme que no es un robot.
-              </small>
-              <Turnstile
-                accion="login"
-                onToken={setCaptchaToken}
-                onExpire={() => setCaptchaToken(null)}
-              />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={enviando || (modo === 'login' && requiereCaptcha && !captchaToken)}
-          >
+          <button type="submit" className="btn btn-primary" disabled={enviando}>
             {enviando
               ? 'Procesando…'
               : modo === 'login'
