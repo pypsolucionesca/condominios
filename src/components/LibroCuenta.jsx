@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase, mensajeError } from '../lib/supabase'
 import { fmtMoneda, fmtFecha, etiqueta } from '../lib/formato'
 import { Panel, Aviso, Cargador, Vacio } from './UI'
@@ -61,6 +61,16 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
   const moneda = cuenta?.moneda || 'USD'
   const movimientos = datos?.movimientos || []
   const resumen = datos?.resumen || {}
+
+  // Orden de visualización. Los movimientos llegan del más antiguo al más
+  // reciente (orden en que se calcula el saldo acumulado). 'desc' los muestra
+  // con el más reciente arriba, sin recalcular saldos: cada fila conserva el
+  // saldo que ya trae, solo cambia el orden de presentación.
+  const [ordenDesc, setOrdenDesc] = useState(false)
+  const movimientosOrdenados = useMemo(
+    () => (ordenDesc ? [...movimientos].reverse() : movimientos),
+    [movimientos, ordenDesc]
+  )
 
   return (
     <Panel
@@ -158,7 +168,24 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
                 <table className="tabla tabla-libro">
                   <thead>
                     <tr>
-                      <th>Fecha</th>
+                      <th>
+                        <button
+                          type="button"
+                          className="orden-btn"
+                          onClick={() => setOrdenDesc((v) => !v)}
+                          title={ordenDesc ? 'Mostrando primero los más recientes. Clic para invertir.' : 'Mostrando primero los más antiguos. Clic para invertir.'}
+                          style={{
+                            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                            font: 'inherit', color: 'inherit', display: 'inline-flex',
+                            alignItems: 'center', gap: 4,
+                          }}
+                        >
+                          Fecha
+                          <span aria-hidden="true" style={{ fontSize: '0.85em', lineHeight: 1 }}>
+                            {ordenDesc ? '▼' : '▲'}
+                          </span>
+                        </button>
+                      </th>
                       <th>Concepto</th>
                       <th className="der">Entrada</th>
                       <th className="der">Salida</th>
@@ -166,7 +193,7 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map((m) => (
+                    {movimientosOrdenados.map((m) => (
                       <tr key={m.id}>
                         <td className="col-fecha">{fmtFecha(m.fecha)}</td>
                         <td>

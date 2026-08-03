@@ -3,20 +3,18 @@ import { useEffect, useRef, useState } from 'react'
 /**
  * Widget de verificación humana de Cloudflare Turnstile.
  *
- * Dos comportamientos según la prop `requerido`:
+ * Robusto contra el fallo de "Verificando..." infinito:
+ *  - Espera a que el script defina window.turnstile antes de renderizar
+ *    (poll corto), en vez de asumir que ya está listo.
+ *  - retry:'auto' y refresh-expired:'auto' para que reintente solo si la
+ *    verificación falla, en lugar de colgarse.
  *
- *  • requerido = true (p. ej. login/registro cuando Supabase EXIGE el captcha):
- *    el widget NO se auto-oculta. Espera a que Cloudflare termine (el modo
- *    "Managed" puede tardar). Si hay error, muestra un aviso para reintentar,
- *    pero nunca se esconde dejando pasar sin token (Supabase lo rechazaría).
+ * Prop `requerido`:
+ *  - true  (login/registro con Supabase exigiendo captcha): NO se auto-oculta;
+ *    si falla muestra aviso para reintentar.
+ *  - false (tolerante): si no carga en unos segundos, llama onNoDisponible().
  *
- *  • requerido = false (tolerante): si la clave falta o el script no carga en
- *    unos segundos, llama a onNoDisponible() y se oculta, para no bloquear.
- *
- * La clave pública se lee de VITE_TURNSTILE_SITE_KEY. La secreta va en Supabase.
- *
- * Props:
- *   onToken(token), onExpire(), onNoDisponible(), accion, requerido (bool)
+ * Clave pública en VITE_TURNSTILE_SITE_KEY. La secreta va en Supabase.
  */
 export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, requerido = false }) {
   const contenedorRef = useRef(null)
@@ -27,41 +25,35 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
 
   useEffect(() => {
     let cancelado = false
+    let pollId = null
 
     const marcarNoDisponible = () => {
       if (cancelado) return
-      // Cuando el captcha es requerido, NO nos ocultamos: mostramos error para
-      // que el usuario reintente, porque saltarlo haría que el backend rechace.
-      if (requerido) {
-        setEstado('error')
-        return
-      }
+      if (requerido) { setEstado('error'); return }
       setEstado('no_disponible')
       if (typeof onNoDisponible === 'function') onNoDisponible()
     }
 
-    // Sin clave configurada.
     if (!siteKey) {
       if (requerido) { setEstado('error'); return }
       marcarNoDisponible()
       return
     }
 
-    // Timeout de gracia SOLO en modo tolerante. Si es requerido, esperamos a
-    // Cloudflare sin límite (Managed puede tardar en la primera verificación).
     const timeout = requerido ? null : setTimeout(marcarNoDisponible, 8000)
 
+    // Cargar el script (una sola vez para toda la app).
     const cargarScript = () =>
       new Promise((resolve, reject) => {
-        if (window.turnstile) return resolve()
         const existente = document.querySelector('script[data-turnstile]')
         if (existente) {
+          if (window.turnstile) return resolve()
           existente.addEventListener('load', () => resolve())
           existente.addEventListener('error', reject)
           return
         }
         const s = document.createElement('script')
-        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
         s.async = true
         s.defer = true
         s.setAttribute('data-turnstile', 'true')
@@ -70,13 +62,31 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
         document.head.appendChild(s)
       })
 
+    // Esperar a que window.turnstile esté realmente definido antes de render.
+    const esperarTurnstile = () =>
+      new Promise((resolve, reject) => {
+        let intentos = 0
+        const chequear = () => {
+          if (cancelado) return
+          if (window.turnstile && typeof window.turnstile.render === 'function') {
+            return resolve()
+          }
+          if (++intentos > 100) return reject(new Error('turnstile no disponible'))
+          pollId = setTimeout(chequear, 100) // hasta ~10s esperando
+        }
+        chequear()
+      })
+
     cargarScript()
+      .then(esperarTurnstile)
       .then(() => {
-        if (cancelado || !contenedorRef.current || !window.turnstile) return
+        if (cancelado || !contenedorRef.current) return
         try {
           widgetIdRef.current = window.turnstile.render(contenedorRef.current, {
             sitekey: siteKey,
             action: accion || undefined,
+            retry: 'auto',
+            'refresh-expired': 'auto',
             callback: (token) => {
               if (timeout) clearTimeout(timeout)
               if (!cancelado) {
@@ -88,13 +98,11 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
               if (typeof onExpire === 'function') onExpire()
             },
             'error-callback': () => {
-              // Error de Cloudflare: en modo requerido mostramos aviso de
-              // reintento; en modo tolerante, ocultamos.
               marcarNoDisponible()
+              return true // permite que Turnstile reintente automáticamente
             },
             theme: 'light',
           })
-          if (!cancelado && estado !== 'error') setEstado('listo')
         } catch {
           marcarNoDisponible()
         }
@@ -104,17 +112,13 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
     return () => {
       cancelado = true
       if (timeout) clearTimeout(timeout)
+      if (pollId) clearTimeout(pollId)
       if (widgetIdRef.current && window.turnstile) {
-        try {
-          window.turnstile.remove(widgetIdRef.current)
-        } catch {
-          /* ya limpiado */
-        }
+        try { window.turnstile.remove(widgetIdRef.current) } catch { /* ya limpiado */ }
       }
     }
   }, [siteKey, accion, requerido, onToken, onExpire, onNoDisponible])
 
-  // Modo tolerante y no disponible: no renderizamos nada (login sigue sin captcha).
   if (estado === 'no_disponible') return null
 
   return (
