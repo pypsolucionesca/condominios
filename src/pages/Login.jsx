@@ -1,9 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import Turnstile from '../components/Turnstile'
-
-const FALLOS_PARA_CAPTCHA = 3
 
 export default function Login() {
   const { iniciarSesion, recuperarContrasena } = useAuth()
@@ -15,18 +12,6 @@ export default function Login() {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
-  // Tras varios intentos fallidos exigimos verificación humana. No bloquea la
-  // cuenta (eso podría usarse en contra del usuario); solo frena a los bots.
-  const [fallos, setFallos] = useState(0)
-  const [captchaToken, setCaptchaToken] = useState(null)
-  // Supabase exige el token de captcha en CADA autenticación cuando la
-  // protección está activa. Por eso el captcha se muestra siempre (no solo
-  // tras fallos). Si no está disponible (clave no configurada o no carga),
-  // captchaNoDisponible pasa a true y el login continúa sin él.
-  const [captchaNoDisponible, setCaptchaNoDisponible] = useState(false)
-
-  // El captcha se exige siempre que esté disponible.
-  const requiereCaptcha = !captchaNoDisponible
 
   const validarEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
 
@@ -42,17 +27,9 @@ export default function Login() {
 
     setEnviando(true)
 
-    // Supabase exige el token de captcha en recuperación y login por igual.
-    if (requiereCaptcha && !captchaToken) {
-      setEnviando(false)
-      setError('Por favor complete la verificación de seguridad para continuar.')
-      return
-    }
-
     if (modo === 'recuperar') {
-      const res = await recuperarContrasena(email, captchaToken)
+      const res = await recuperarContrasena(email)
       setEnviando(false)
-      setCaptchaToken(null)
       if (res.ok) {
         setAviso('Si el correo está registrado, recibirá un enlace para restablecer su contraseña.')
         setModo('login')
@@ -68,14 +45,9 @@ export default function Login() {
       return
     }
 
-    const res = await iniciarSesion(email, password, captchaToken)
+    const res = await iniciarSesion(email, password)
     setEnviando(false)
-    if (!res.ok) {
-      setError(res.error)
-      setFallos((n) => n + 1)
-      // El token de Turnstile es de un solo uso: se limpia para el próximo intento.
-      setCaptchaToken(null)
-    }
+    if (!res.ok) setError(res.error)
     // Si tiene éxito, AuthProvider redirige automáticamente.
   }
 
@@ -162,26 +134,7 @@ export default function Login() {
           {error && <div className="alerta alerta-error">{error}</div>}
           {aviso && <div className="alerta alerta-exito">{aviso}</div>}
 
-          {requiereCaptcha && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <small className="texto-ayuda" style={{ marginBottom: 4 }}>
-                Por seguridad, confirme que no es un robot.
-              </small>
-              <Turnstile
-                accion={modo === 'recuperar' ? 'recuperar' : 'login'}
-                requerido={true}
-                onToken={setCaptchaToken}
-                onExpire={() => setCaptchaToken(null)}
-                onNoDisponible={() => setCaptchaNoDisponible(true)}
-              />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={enviando || (requiereCaptcha && !captchaToken)}
-          >
+          <button type="submit" className="btn btn-primary" disabled={enviando}>
             {enviando
               ? 'Procesando…'
               : modo === 'login'
