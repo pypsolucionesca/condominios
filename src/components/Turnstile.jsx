@@ -81,7 +81,12 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
       .then(esperarTurnstile)
       .then(() => {
         if (cancelado || !contenedorRef.current) return
+        // Protección contra doble montaje (React StrictMode ejecuta el efecto
+        // dos veces): si ya hay un widget en este contenedor, no creamos otro,
+        // porque dos widgets Turnstile compitiendo se quedan en "Verificando".
+        if (widgetIdRef.current) return
         try {
+          contenedorRef.current.innerHTML = '' // por si quedó un render previo
           widgetIdRef.current = window.turnstile.render(contenedorRef.current, {
             sitekey: siteKey,
             action: accion || undefined,
@@ -117,6 +122,7 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
       if (pollId) clearTimeout(pollId)
       if (widgetIdRef.current && window.turnstile) {
         try { window.turnstile.remove(widgetIdRef.current) } catch { /* ya limpiado */ }
+        widgetIdRef.current = null
       }
     }
   }, [siteKey, accion, requerido, onToken, onExpire, onNoDisponible])
