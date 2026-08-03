@@ -85,8 +85,6 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
           widgetIdRef.current = window.turnstile.render(contenedorRef.current, {
             sitekey: siteKey,
             action: accion || undefined,
-            retry: 'auto',
-            'refresh-expired': 'auto',
             callback: (token) => {
               if (timeout) clearTimeout(timeout)
               if (!cancelado) {
@@ -97,9 +95,13 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, r
             'expired-callback': () => {
               if (typeof onExpire === 'function') onExpire()
             },
-            'error-callback': () => {
+            'error-callback': (codigo) => {
+              // No reintentar en bucle: registramos el código para diagnóstico
+              // y mostramos aviso. El usuario puede recargar.
+              if (typeof console !== 'undefined') {
+                console.warn('[Turnstile] error-callback código:', codigo)
+              }
               marcarNoDisponible()
-              return true // permite que Turnstile reintente automáticamente
             },
             theme: 'light',
           })
