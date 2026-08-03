@@ -169,6 +169,7 @@ export default function Login() {
               </small>
               <Turnstile
                 accion={modo === 'recuperar' ? 'recuperar' : 'login'}
+                requerido={true}
                 onToken={setCaptchaToken}
                 onExpire={() => setCaptchaToken(null)}
                 onNoDisponible={() => setCaptchaNoDisponible(true)}

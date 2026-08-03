@@ -182,6 +182,7 @@ export default function Registro() {
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
               <Turnstile
                 accion="registro"
+                requerido={true}
                 onToken={setCaptchaToken}
                 onExpire={() => setCaptchaToken(null)}
                 onNoDisponible={() => setCaptchaNoDisponible(true)}

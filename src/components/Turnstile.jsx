@@ -1,27 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Widget de verificación humana de Cloudflare Turnstile — TOLERANTE A FALLOS.
+ * Widget de verificación humana de Cloudflare Turnstile.
  *
- * Filosofía: el captcha SUMA seguridad, pero NUNCA debe impedir que un usuario
- * legítimo inicie sesión. Por eso, si la clave no está configurada, o el script
- * de Cloudflare no carga (bloqueadores, red móvil, etc.), este componente avisa
- * al padre mediante onNoDisponible() para que el login continúe sin captcha,
- * en lugar de romperse o bloquear el botón.
+ * Dos comportamientos según la prop `requerido`:
  *
- * La clave se lee de VITE_TURNSTILE_SITE_KEY (clave pública). La clave secreta
- * se configura en Supabase, nunca aquí.
+ *  • requerido = true (p. ej. login/registro cuando Supabase EXIGE el captcha):
+ *    el widget NO se auto-oculta. Espera a que Cloudflare termine (el modo
+ *    "Managed" puede tardar). Si hay error, muestra un aviso para reintentar,
+ *    pero nunca se esconde dejando pasar sin token (Supabase lo rechazaría).
+ *
+ *  • requerido = false (tolerante): si la clave falta o el script no carga en
+ *    unos segundos, llama a onNoDisponible() y se oculta, para no bloquear.
+ *
+ * La clave pública se lee de VITE_TURNSTILE_SITE_KEY. La secreta va en Supabase.
  *
  * Props:
- *   onToken(token)      → token cuando la verificación pasa.
- *   onExpire()          → el token caducó.
- *   onNoDisponible()    → el captcha no se pudo cargar; el login debe continuar sin él.
- *   accion              → etiqueta opcional (registro / login).
+ *   onToken(token), onExpire(), onNoDisponible(), accion, requerido (bool)
  */
-export default function Turnstile({ onToken, onExpire, onNoDisponible, accion }) {
+export default function Turnstile({ onToken, onExpire, onNoDisponible, accion, requerido = false }) {
   const contenedorRef = useRef(null)
   const widgetIdRef = useRef(null)
-  const [estado, setEstado] = useState('cargando') // cargando | listo | no_disponible
+  const [estado, setEstado] = useState('cargando') // cargando | listo | error | no_disponible
 
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY
 
@@ -30,18 +30,26 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion })
 
     const marcarNoDisponible = () => {
       if (cancelado) return
+      // Cuando el captcha es requerido, NO nos ocultamos: mostramos error para
+      // que el usuario reintente, porque saltarlo haría que el backend rechace.
+      if (requerido) {
+        setEstado('error')
+        return
+      }
       setEstado('no_disponible')
       if (typeof onNoDisponible === 'function') onNoDisponible()
     }
 
-    // Sin clave configurada -> el login sigue sin captcha.
+    // Sin clave configurada.
     if (!siteKey) {
+      if (requerido) { setEstado('error'); return }
       marcarNoDisponible()
       return
     }
 
-    // Si el script tarda demasiado, no dejamos al usuario atrapado.
-    const timeout = setTimeout(marcarNoDisponible, 8000)
+    // Timeout de gracia SOLO en modo tolerante. Si es requerido, esperamos a
+    // Cloudflare sin límite (Managed puede tardar en la primera verificación).
+    const timeout = requerido ? null : setTimeout(marcarNoDisponible, 8000)
 
     const cargarScript = () =>
       new Promise((resolve, reject) => {
@@ -70,7 +78,7 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion })
             sitekey: siteKey,
             action: accion || undefined,
             callback: (token) => {
-              clearTimeout(timeout)
+              if (timeout) clearTimeout(timeout)
               if (!cancelado) {
                 setEstado('listo')
                 if (typeof onToken === 'function') onToken(token)
@@ -79,10 +87,14 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion })
             'expired-callback': () => {
               if (typeof onExpire === 'function') onExpire()
             },
-            'error-callback': marcarNoDisponible,
+            'error-callback': () => {
+              // Error de Cloudflare: en modo requerido mostramos aviso de
+              // reintento; en modo tolerante, ocultamos.
+              marcarNoDisponible()
+            },
             theme: 'light',
           })
-          if (!cancelado) setEstado('listo')
+          if (!cancelado && estado !== 'error') setEstado('listo')
         } catch {
           marcarNoDisponible()
         }
@@ -91,18 +103,28 @@ export default function Turnstile({ onToken, onExpire, onNoDisponible, accion })
 
     return () => {
       cancelado = true
-      clearTimeout(timeout)
+      if (timeout) clearTimeout(timeout)
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current)
         } catch {
-          /* el widget ya pudo haberse limpiado */
+          /* ya limpiado */
         }
       }
     }
-  }, [siteKey, accion, onToken, onExpire, onNoDisponible])
+  }, [siteKey, accion, requerido, onToken, onExpire, onNoDisponible])
 
+  // Modo tolerante y no disponible: no renderizamos nada (login sigue sin captcha).
   if (estado === 'no_disponible') return null
 
-  return <div ref={contenedorRef} style={{ margin: '12px 0', minHeight: 65 }} />
+  return (
+    <div style={{ width: '100%' }}>
+      <div ref={contenedorRef} style={{ margin: '12px 0', minHeight: 65, display: 'flex', justifyContent: 'center' }} />
+      {estado === 'error' && (
+        <small className="texto-ayuda" style={{ display: 'block', textAlign: 'center', color: '#b91c1c' }}>
+          No se pudo cargar la verificación de seguridad. Recargue la página e intente de nuevo.
+        </small>
+      )}
+    </div>
+  )
 }
