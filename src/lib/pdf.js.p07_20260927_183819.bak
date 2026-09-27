@@ -467,58 +467,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
       y += 2
     }
 
-    // P07_PAGO_DESGLOSE: recibo línea por línea (salario, adicionales, descuento, neto)
-    const desglose = Array.isArray(pago.desglose)
-      ? pago.desglose.filter((d) => Number(d.monto_usd) > 0)
-      : []
-    if (desglose.length > 1) {
-      const tasa = Number(pago.exchange_rate) || 0
-      const enBs = pago.currency === 'VES' && tasa > 1
-      const fmtLinea = (usd) => (enBs ? `Bs. ${fmtNumero(usd * tasa)}` : fmtUSD(usd))
-      const ded = Number(pago.deduction_usd) || 0
-      const filas = desglose.slice(0, 5).map((d) => [d.concepto || etiqueta(d.tipo), fmtLinea(Number(d.monto_usd))])
-      if (desglose.length > 5) {
-        filas.push(['Otros', fmtLinea(desglose.slice(5).reduce((s, d) => s + Number(d.monto_usd), 0))])
-      }
-      if (ded > 0) filas.push(['Deducción (préstamo)', `- ${fmtLinea(ded)}`])
-      const bruto = desglose.reduce((s, d) => s + Number(d.monto_usd), 0)
-      const cajaAlto = 10 + filas.length * 5 + 9
-
-      doc.setFillColor(248, 250, 252)
-      doc.roundedRect(14, y - 4, ancho - 28, cajaAlto, 2, 2, 'F')
-      doc.setFontSize(7)
-      doc.setTextColor(...GRIS)
-      doc.setFont('helvetica', 'bold')
-      doc.text('CONCEPTO', 18, y + 1)
-      doc.text('MONTO', ancho - 18, y + 1, { align: 'right' })
-
-      let yy = y + 7
-      doc.setFontSize(9)
-      filas.forEach(([concepto, monto], i) => {
-        const esDeduccion = ded > 0 && i === filas.length - 1
-        doc.setFont('helvetica', 'normal')
-        doc.setTextColor(...(esDeduccion ? ROJO : OSCURO))
-        doc.text(doc.splitTextToSize(String(concepto), ancho - 80)[0], 18, yy)
-        doc.text(monto, ancho - 18, yy, { align: 'right' })
-        yy += 5
-      })
-
-      doc.setDrawColor(203, 213, 225)
-      doc.line(18, yy - 2.5, ancho - 18, yy - 2.5)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(10)
-      doc.setTextColor(...AZUL)
-      doc.text('NETO PAGADO', 18, yy + 2.5)
-      doc.text(
-        enBs
-          ? `Bs. ${fmtNumero(Number(pago.amount) - (Number(pago.deduction_amount) || 0))}`
-          : fmtUSD(bruto - ded),
-        ancho - 18,
-        yy + 2.5,
-        { align: 'right' }
-      )
-      y += cajaAlto + 4
-    } else {
     // Diseño dinámico: Si el recibo tiene un descuento, la caja crece
     const tieneDeduccion = pago.deduction_usd && Number(pago.deduction_usd) > 0
     const altoCaja = tieneDeduccion ? 38 : 26
@@ -586,8 +534,6 @@ export function pdfReciboPago({ pago, beneficiario, condominio, logoDataUrl }) {
       }
       y += 32
     }
-
-    } // fin P07_PAGO_DESGLOSE
 
     doc.setDrawColor(148, 163, 184)
     doc.line(20, y + 12, 88, y + 12)

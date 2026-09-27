@@ -635,33 +635,6 @@ export default function Tesoreria() {
     })
   }
 
-  // P07_PAGO_DESGLOSE: pago = salario + adicionales − descuento; Bs. = total × tasa
-  const TIPOS_ADICIONAL = {
-    bono: 'Bono',
-    horas_extra: 'Horas extra',
-    liquidacion: 'Liquidación / prestaciones',
-    vacaciones: 'Vacaciones',
-    reintegro: 'Reintegro de gastos',
-    otro: 'Otro',
-  }
-  const totalAdicionales = (p) =>
-    (p.adicionales || []).reduce((s, a) => s + (Number(a.monto_usd) || 0), 0)
-  const totalBrutoUSD = (p) =>
-    Math.round(((Number(p.amount_usd) || 0) + totalAdicionales(p)) * 100) / 100
-  const tasaPagoEmpleado = (p) => Number(p.tasa_manual) || Number(tasaHoy?.tasa) || 0
-  const cambiarAdicional = (i, cambios) =>
-    setPagoEmpleado((p) => ({
-      ...p,
-      adicionales: (p.adicionales || []).map((a, j) => (j === i ? { ...a, ...cambios } : a)),
-    }))
-  const agregarAdicional = () =>
-    setPagoEmpleado((p) => ({
-      ...p,
-      adicionales: [...(p.adicionales || []), { tipo: 'bono', concepto: '', monto_usd: '' }],
-    }))
-  const quitarAdicional = (i) =>
-    setPagoEmpleado((p) => ({ ...p, adicionales: (p.adicionales || []).filter((_, j) => j !== i) }))
-
   const abrirPagoEmpleado = (persona) => {
     const periodo = { diario: 'Jornada', semanal: 'Semana', quincenal: 'Quincena', mensual: 'Mes' }
 
@@ -686,7 +659,6 @@ export default function Tesoreria() {
       tasa_manual: tasaHoy?.tasa ? String(tasaHoy.tasa) : '',
       operacion: '',
       generar_recibo: true,
-      adicionales: [],
     })
     setPanel('pagar-empleado')
   }
@@ -695,15 +667,10 @@ export default function Tesoreria() {
     e.preventDefault()
     setError(null)
 
-    const montoUSD = totalBrutoUSD(pagoEmpleado)
+    const montoUSD = Number(pagoEmpleado.amount_usd)
     const descuentoUSD = Number(pagoEmpleado.descuento_usd) || 0
 
-    const incompleto = (pagoEmpleado.adicionales || []).findIndex(
-      (a) => !(Number(a.monto_usd) > 0) || (a.tipo === 'otro' && !a.concepto.trim())
-    )
-    if (incompleto >= 0)
-      return setError(`Complete o quite el pago adicional N° ${incompleto + 1} (tipo, descripción y monto).`)
-    if (!montoUSD || montoUSD <= 0) return setError('Indique el salario o al menos un pago adicional.')
+    if (!montoUSD || montoUSD <= 0) return setError('Indique el salario bruto en dólares.')
     if (descuentoUSD > montoUSD) return setError('El descuento no puede ser mayor al salario bruto.')
     if (descuentoUSD > Number(pagoEmpleado.persona.advance_balance)) return setError('El descuento no puede superar la deuda pendiente del trabajador.')
     if (!pagoEmpleado.account_id) return setError('Seleccione la cuenta de origen.')
@@ -727,7 +694,7 @@ export default function Tesoreria() {
 
     const montoPagoBruto = pagoEmpleado.currency === 'USD'
         ? montoUSD
-        : Math.round(montoUSD * tasaEfectiva * 100) / 100
+        : Number(pagoEmpleado.amount) || montoUSD * tasaEfectiva
 
     if (!montoPagoBruto || montoPagoBruto <= 0) {
       return setError('No se pudo calcular el monto bruto. Verifique la tasa.')
@@ -735,21 +702,7 @@ export default function Tesoreria() {
 
     const descuentoPago = pagoEmpleado.currency === 'USD'
         ? descuentoUSD
-        : Math.round(descuentoUSD * tasaEfectiva * 100) / 100
-
-    const conceptoBase = pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`
-    const extras = (pagoEmpleado.adicionales || []).map((a) => ({
-      tipo: a.tipo,
-      concepto: a.tipo === 'otro' ? a.concepto.trim() : TIPOS_ADICIONAL[a.tipo],
-      monto_usd: Math.round((Number(a.monto_usd) || 0) * 100) / 100,
-    }))
-    const desglose = [
-      { tipo: 'salario', concepto: conceptoBase, monto_usd: Math.round((Number(pagoEmpleado.amount_usd) || 0) * 100) / 100 },
-      ...extras,
-    ].filter((d) => d.monto_usd > 0)
-    const descripcionPago = extras.length
-      ? `${conceptoBase} + ${extras.map((x) => x.concepto).join(' + ')}`
-      : conceptoBase
+        : descuentoUSD * (montoPagoBruto / montoUSD) 
 
     setEnviando(true)
     try {
@@ -776,13 +729,12 @@ export default function Tesoreria() {
         p_currency: pagoEmpleado.currency,
         p_exchange_rate: pagoEmpleado.currency === 'VES' ? tasaEfectiva : 1,
         p_payment_date: pagoEmpleado.payment_date,
-        p_description: descripcionPago,
+        p_description: pagoEmpleado.concepto.trim() || `Pago a ${pagoEmpleado.persona.full_name}`,
         p_invoice_ref: pagoEmpleado.operacion.trim() || null,
         p_receipt_url: rutaRecibo,
         p_category_id: catNomina ? catNomina.id : null,
         p_deduction_usd: descuentoUSD > 0 ? descuentoUSD : 0,
         p_deduction_amount: descuentoUSD > 0 ? descuentoPago : 0,
-        p_desglose: desglose,
       })
       if (err) throw err
 
@@ -2879,79 +2831,28 @@ export default function Tesoreria() {
             </div>
 
             <div className="form-group">
-              <label>
-                Salario del período (USD)
-                <IconoAyuda texto="Viene del salario configurado de la persona. Puede cambiarlo; si solo paga un adicional (por ejemplo, una liquidación), déjelo en 0." />
-              </label>
+              <label>Salario Bruto en dólares *</label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 className="form-control"
                 value={pagoEmpleado.amount_usd}
-                onChange={(e) => setPagoEmpleado({ ...pagoEmpleado, amount_usd: e.target.value })}
-                placeholder="0.00"
+                onChange={(e) => {
+                  const usd = e.target.value
+                  setPagoEmpleado({
+                    ...pagoEmpleado,
+                    amount_usd: usd,
+                    // P04: respeta la tasa manual si el usuario la escribió
+                    amount:
+                      pagoEmpleado.currency === 'VES' &&
+                      (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa) &&
+                      usd
+                        ? (Number(usd) * (Number(pagoEmpleado.tasa_manual) || tasaHoy.tasa)).toFixed(2)
+                        : pagoEmpleado.amount,
+                  })
+                }}
               />
-            </div>
-
-            <div className="form-group">
-              <label>Pagos adicionales</label>
-              {(pagoEmpleado.adicionales || []).map((a, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    alignItems: 'center',
-                    padding: 8,
-                    marginBottom: 8,
-                    border: '1px solid #cbd5e1',
-                    borderRadius: 8,
-                  }}
-                >
-                  <select
-                    className="form-control"
-                    style={{ flex: '1 1 160px' }}
-                    value={a.tipo}
-                    onChange={(e) => cambiarAdicional(i, { tipo: e.target.value })}
-                  >
-                    {Object.entries(TIPOS_ADICIONAL).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                  {a.tipo === 'otro' && (
-                    <input
-                      className="form-control"
-                      style={{ flex: '2 1 180px' }}
-                      value={a.concepto}
-                      onChange={(e) => cambiarAdicional(i, { concepto: e.target.value })}
-                      placeholder="¿Qué se paga?"
-                    />
-                  )}
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="form-control"
-                    style={{ flex: '1 1 110px' }}
-                    value={a.monto_usd}
-                    onChange={(e) => cambiarAdicional(i, { monto_usd: e.target.value })}
-                    placeholder="Monto USD"
-                  />
-                  <button type="button" className="btn-mini btn-secundario" onClick={() => quitarAdicional(i)}>
-                    Quitar
-                  </button>
-                </div>
-              ))}
-              <button type="button" className="btn btn-secundario btn-auto" onClick={agregarAdicional}>
-                + Agregar pago adicional
-              </button>
-              <small className="texto-ayuda bloque">
-                Bono, horas extra, liquidación, vacaciones u otro monto que se paga junto con el salario.
-              </small>
             </div>
 
             {Number(pagoEmpleado.persona.advance_balance) > 0 && (
@@ -2964,12 +2865,12 @@ export default function Tesoreria() {
                   type="number"
                   step="0.01"
                   min="0"
-                  max={Math.min(totalBrutoUSD(pagoEmpleado), Number(pagoEmpleado.persona.advance_balance) || 0)}
+                  max={Math.min(Number(pagoEmpleado.amount_usd) || 0, Number(pagoEmpleado.persona.advance_balance) || 0)}
                   className="form-control"
                   value={pagoEmpleado.descuento_usd}
                   onChange={(e) => {
                     let val = e.target.value
-                    const maximoPermitido = Math.min(totalBrutoUSD(pagoEmpleado), Number(pagoEmpleado.persona.advance_balance) || 0)
+                    const maximoPermitido = Math.min(Number(pagoEmpleado.amount_usd) || 0, Number(pagoEmpleado.persona.advance_balance) || 0)
                     if (Number(val) > maximoPermitido) {
                       val = String(maximoPermitido)
                     }
@@ -2988,6 +2889,12 @@ export default function Tesoreria() {
               </div>
             )}
 
+            {Number(pagoEmpleado.descuento_usd) > 0 && (
+              <div className="conversion-linea destacada" style={{ marginTop: '8px', marginBottom: '16px' }}>
+                <span>Monto NETO a pagar al trabajador:</span>
+                <strong>{fmtUSD(Number(pagoEmpleado.amount_usd) - Number(pagoEmpleado.descuento_usd))}</strong>
+              </div>
+            )}
 
             {pagoEmpleado.currency === 'VES' && (
               <div className="conversion-bloque">
@@ -3017,7 +2924,51 @@ export default function Tesoreria() {
                       placeholder="Tasa del día del pago"
                     />
                   </div>
+                  <div className="form-group">
+                    <label>Monto bruto a procesar (Bs.)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-control"
+                      value={pagoEmpleado.amount}
+                      onChange={(e) => {
+                        // P06_BS_A_USD: si se paga otro monto en Bs., el valor en USD
+                        // se recalcula con la tasa para que el gasto quede exacto.
+                        const bs = e.target.value
+                        const t = Number(pagoEmpleado.tasa_manual) || Number(tasaHoy?.tasa) || 0
+                        setPagoEmpleado({
+                          ...pagoEmpleado,
+                          amount: bs,
+                          amount_usd: t && Number(bs) ? (Number(bs) / t).toFixed(2) : pagoEmpleado.amount_usd,
+                        })
+                      }}
+                      placeholder="0.00"
+                    />
+                    {Number(pagoEmpleado.amount) > 0 &&
+                      (Number(pagoEmpleado.tasa_manual) || Number(tasaHoy?.tasa)) > 0 && (
+                        <small className="texto-ayuda bloque">
+                          Se registrará como gasto de{' '}
+                          {fmtUSD(
+                            Number(pagoEmpleado.amount) /
+                              (Number(pagoEmpleado.tasa_manual) || Number(tasaHoy?.tasa))
+                          )}
+                        </small>
+                      )}
+                  </div>
                 </div>
+                
+                {Number(pagoEmpleado.descuento_usd) > 0 && (
+                  <div className="conversion-linea destacada" style={{ marginTop: '8px' }}>
+                    <span>Neto a depositar (Bs.):</span>
+                    <strong>
+                      Bs. {fmtNumero(
+                        (Number(pagoEmpleado.amount) || (Number(pagoEmpleado.amount_usd) * (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 1))) -
+                        (Number(pagoEmpleado.descuento_usd) * (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa || 1))
+                      )}
+                    </strong>
+                  </div>
+                )}
 
                 {tasaHoy?.tasa && (
                   <div className="conversion-linea" style={{ marginTop: '8px' }}>
@@ -3027,48 +2978,6 @@ export default function Tesoreria() {
                 )}
               </div>
             )}
-
-            {(() => {
-              const bruto = totalBrutoUSD(pagoEmpleado)
-              const ded = Number(pagoEmpleado.descuento_usd) || 0
-              const neto = Math.max(0, bruto - ded)
-              const t = tasaPagoEmpleado(pagoEmpleado)
-              const enBs = pagoEmpleado.currency === 'VES'
-              return (
-                <div
-                  style={{
-                    background: '#1e3a8a',
-                    color: '#fff',
-                    borderRadius: 8,
-                    padding: '10px 12px',
-                    margin: '4px 0 16px',
-                    fontSize: '0.9rem',
-                    lineHeight: 1.55,
-                  }}
-                >
-                  <div>Salario: {fmtUSD(Number(pagoEmpleado.amount_usd) || 0)}</div>
-                  {totalAdicionales(pagoEmpleado) > 0 && (
-                    <div>Adicionales: + {fmtUSD(totalAdicionales(pagoEmpleado))}</div>
-                  )}
-                  {ded > 0 && <div>Descuento por préstamo: − {fmtUSD(ded)}</div>}
-                  <div style={{ fontSize: '1.05rem', marginTop: 4 }}>
-                    Total a pagar: <strong>{fmtUSD(neto)}</strong>
-                  </div>
-                  {enBs && (
-                    <div style={{ fontSize: '1.05rem' }}>
-                      {t > 0 ? (
-                        <>
-                          En bolívares: <strong>Bs. {fmtNumero(Math.round(neto * t * 100) / 100)}</strong>{' '}
-                          <span style={{ fontSize: '0.8rem' }}>(tasa Bs. {fmtNumero(t)})</span>
-                        </>
-                      ) : (
-                        'Indique la tasa para calcular el monto en bolívares.'
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
 
             <div className="grid-form">
               <div className="form-group">
