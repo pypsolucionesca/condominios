@@ -1,27 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-
-// P08_ACTUALIZACION: identificador único de cada compilación. La app lo lleva
-// dentro (__BUILD_ID__) y lo compara con /version.json para avisar que hay
-// una versión nueva publicada.
-const BUILD_ID = new Date().toISOString()
-
-function versionPlugin() {
-  return {
-    name: 'pyp-version',
-    apply: 'build',
-    writeBundle(opciones) {
-      const dir = opciones.dir || resolve(process.cwd(), 'dist')
-      writeFileSync(resolve(dir, 'version.json'), JSON.stringify({ version: BUILD_ID }))
-    },
-  }
-}
 
 export default defineConfig({
-  plugins: [react(), versionPlugin()],
-  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
+  plugins: [react()],
   build: {
     rollupOptions: {
       output: {

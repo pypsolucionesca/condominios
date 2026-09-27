@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import Campana from './Campana'
 import LimiteError from './LimiteError'
 import CentroAyuda from './CentroAyuda'
-import TasaMenu from './TasaMenu' // P08_ACTUALIZACION
-import AvisoActualizacion from './AvisoActualizacion'
 
 export default function Layout() {
   const { perfil, condominio, esAdmin, esSupervisor, puedeOperar, cerrarSesion, unidades, esRestringido } =
@@ -194,7 +192,6 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-pie">
-          <TasaMenu />
           <NavLink to="/perfil" className="usuario-info usuario-enlace">
             {perfil?.avatar_url ? (
               <img src={perfil.avatar_url} alt="" className="usuario-avatar" />
@@ -261,8 +258,6 @@ export default function Layout() {
                   {!esAdmin && !esSupervisor && descripcionRol}
                 </small>
               </div>
-
-              <TasaMenu movil />
 
               <nav className="menu-nav">
                 {enlaces.map((e) => (
@@ -355,8 +350,6 @@ export default function Layout() {
           Menú
         </button>
       </nav>
-
-      <AvisoActualizacion />
 
       <CentroAyuda 
         abierto={ayudaAbierta} 
