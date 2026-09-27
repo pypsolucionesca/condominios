@@ -3080,66 +3080,31 @@ export default function Tesoreria() {
         </p>
 
         <form onSubmit={guardarMovimiento}>
-          {/* P05_TIPO_MOVIMIENTO: primero la dirección del dinero, luego el tipo */}
           <div className="form-group">
-            <label>¿Qué pasó con el dinero? *</label>
-            <div className="opciones-moneda">
-              {[
-                { id: 'entra', titulo: 'Entró dinero', sub: 'Suma al saldo', kind: 'otro_ingreso' },
-                { id: 'sale', titulo: 'Salió dinero', sub: 'Resta del saldo', kind: 'comision_bancaria' },
-                { id: 'traslado', titulo: 'Traslado', sub: 'Entre mis cuentas', kind: 'traslado' },
-              ].map((op) => {
-                const actual =
-                  formMovimiento.kind === 'traslado'
-                    ? 'traslado'
-                    : (SIGNO_MOV[formMovimiento.kind] || 1) > 0
-                    ? 'entra'
-                    : 'sale'
-                return (
-                  <button
-                    key={op.id}
-                    type="button"
-                    className={`opcion-moneda ${actual === op.id ? 'activa' : ''}`}
-                    onClick={() =>
-                      actual !== op.id &&
-                      setFormMovimiento({ ...formMovimiento, kind: op.kind, destino_id: '' })
-                    }
-                  >
-                    <strong>{op.titulo}</strong>
-                    <small>{op.sub}</small>
-                  </button>
-                )
-              })}
-            </div>
+            <label>¿Qué desea registrar? *</label>
+            <select
+              className="form-control"
+              value={formMovimiento.kind}
+              onChange={(e) =>
+                setFormMovimiento({ ...formMovimiento, kind: e.target.value, destino_id: '' })
+              }
+            >
+              <optgroup label="Resta del saldo">
+                <option value="comision_bancaria">Comisión bancaria</option>
+                <option value="debito_bancario">Débito bancario (cargo o impuesto del banco)</option>
+                <option value="otro_egreso">Otro egreso</option>
+                <option value="ajuste_negativo">Ajuste de caja · faltante</option>
+              </optgroup>
+              <optgroup label="Suma al saldo">
+                <option value="otro_ingreso">Otro ingreso</option>
+                <option value="interes_ganado">Intereses ganados</option>
+                <option value="ajuste_positivo">Ajuste de caja · sobrante</option>
+              </optgroup>
+              <optgroup label="Entre mis cuentas">
+                <option value="traslado">Traslado a otra cuenta</option>
+              </optgroup>
+            </select>
           </div>
-
-          {formMovimiento.kind !== 'traslado' && (
-            <div className="form-group">
-              <label>
-                {(SIGNO_MOV[formMovimiento.kind] || 1) > 0 ? 'Tipo de ingreso *' : 'Tipo de egreso *'}
-              </label>
-              <select
-                className="form-control"
-                value={formMovimiento.kind}
-                onChange={(e) => setFormMovimiento({ ...formMovimiento, kind: e.target.value })}
-              >
-                {(SIGNO_MOV[formMovimiento.kind] || 1) > 0 ? (
-                  <>
-                    <option value="otro_ingreso">Otro ingreso</option>
-                    <option value="interes_ganado">Intereses ganados</option>
-                    <option value="ajuste_positivo">Ajuste de caja · sobrante</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="comision_bancaria">Comisión bancaria</option>
-                    <option value="debito_bancario">Débito bancario (cargo o impuesto del banco)</option>
-                    <option value="otro_egreso">Otro egreso</option>
-                    <option value="ajuste_negativo">Ajuste de caja · faltante</option>
-                  </>
-                )}
-              </select>
-            </div>
-          )}
 
           <div className="grid-form">
             <div className="form-group">

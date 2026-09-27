@@ -127,7 +127,6 @@ export default function Tesoreria() {
 
   const [formMovimiento, setFormMovimiento] = useState({
     account_id: '',
-    destino_id: '', // P04_OTROS_MOVIMIENTOS
     kind: 'comision_bancaria',
     description: '',
     amount: '',
@@ -766,68 +765,30 @@ export default function Tesoreria() {
     }
   }
 
-  // P04_OTROS_MOVIMIENTOS: movimientos de cuenta que no son gastos ni pagos de unidades.
-  const SIGNO_MOV = {
-    comision_bancaria: -1, debito_bancario: -1, otro_egreso: -1, ajuste_negativo: -1, traslado: -1,
-    otro_ingreso: 1, interes_ganado: 1, ajuste_positivo: 1,
-  }
-  const EJEMPLO_MOV = {
-    comision_bancaria: 'Mantenimiento de cuenta',
-    debito_bancario: 'IGTF, cargo por transferencia…',
-    otro_egreso: 'Describa la salida de dinero',
-    ajuste_negativo: 'Faltante en arqueo de caja',
-    otro_ingreso: 'Reintegro, donación, alquiler de espacio…',
-    interes_ganado: 'Intereses del mes',
-    ajuste_positivo: 'Sobrante en arqueo de caja',
-    traslado: 'Motivo del traslado',
-  }
-  const faltanMovimiento = () => {
-    const f = []
-    const traslado = formMovimiento.kind === 'traslado'
-    if (!formMovimiento.account_id) f.push(traslado ? 'cuenta de origen' : 'cuenta')
-    if (traslado && !formMovimiento.destino_id) f.push('cuenta de destino')
-    if (!formMovimiento.description.trim()) f.push('concepto')
-    if (!(Number(formMovimiento.amount) > 0)) f.push('monto')
-    if (!formMovimiento.date) f.push('fecha')
-    return f
-  }
-
   const guardarMovimiento = async (e) => {
     e.preventDefault()
     setError(null)
 
-    const faltan = faltanMovimiento()
-    if (faltan.length) return setError('Para guardar falta: ' + faltan.join(', ') + '.')
+    if (!formMovimiento.account_id) return setError('Seleccione la cuenta.')
+    if (!formMovimiento.description.trim()) return setError('Describa el movimiento.')
     const monto = Number(formMovimiento.amount)
+    if (!monto || monto <= 0) return setError('El monto debe ser mayor que cero.')
 
     setEnviando(true)
     try {
-      if (formMovimiento.kind === 'traslado') {
-        const { error: err } = await supabase.rpc('transfer_between_accounts', {
-          p_origen: formMovimiento.account_id,
-          p_destino: formMovimiento.destino_id,
-          p_amount: monto,
-          p_date: formMovimiento.date,
-          p_note: formMovimiento.description.trim(),
-        })
-        if (err) throw err
-        setAviso('Traslado registrado.')
-      } else {
-        const { error: err } = await supabase.rpc('register_movement', {
-          p_account_id: formMovimiento.account_id,
-          p_kind: formMovimiento.kind,
-          p_description: formMovimiento.description.trim(),
-          p_amount: monto,
-          p_date: formMovimiento.date,
-          p_note: null,
-        })
-        if (err) throw err
-        setAviso('Movimiento registrado.')
-      }
+      const { error: err } = await supabase.rpc('register_movement', {
+        p_account_id: formMovimiento.account_id,
+        p_kind: formMovimiento.kind,
+        p_description: formMovimiento.description.trim(),
+        p_amount: monto,
+        p_date: formMovimiento.date,
+        p_note: null,
+      })
+      if (err) throw err
 
+      setAviso('Movimiento registrado.')
       setFormMovimiento({
         account_id: '',
-        destino_id: '',
         kind: 'comision_bancaria',
         description: '',
         amount: '',
@@ -1066,16 +1027,13 @@ export default function Tesoreria() {
             <h2>Cuentas</h2>
             {puedeOperar && (
               <div className="grupo-botones">
-                {esAdmin && (
-                  <button
-                    className="btn btn-secundario btn-accion"
-                    onClick={() => setPanel('movimiento')}
-                    disabled={cuentas.length === 0}
-                    title="Comisiones, débitos, intereses, otros ingresos y traslados entre cuentas"
-                  >
-                    Otros movimientos
-                  </button>
-                )}
+                <button
+                  className="btn btn-secundario btn-accion"
+                  onClick={() => setPanel('movimiento')}
+                  disabled={cuentas.length === 0}
+                >
+                  Comisión o ajuste
+                </button>
                 <button
                   className="btn btn-primary btn-accion"
                   onClick={() => {
@@ -2843,12 +2801,9 @@ export default function Tesoreria() {
                   setPagoEmpleado({
                     ...pagoEmpleado,
                     amount_usd: usd,
-                    // P04: respeta la tasa manual si el usuario la escribió
                     amount:
-                      pagoEmpleado.currency === 'VES' &&
-                      (Number(pagoEmpleado.tasa_manual) || tasaHoy?.tasa) &&
-                      usd
-                        ? (Number(usd) * (Number(pagoEmpleado.tasa_manual) || tasaHoy.tasa)).toFixed(2)
+                      pagoEmpleado.currency === 'VES' && tasaHoy?.tasa && usd
+                        ? (Number(usd) * tasaHoy.tasa).toFixed(2)
                         : pagoEmpleado.amount,
                   })
                 }}
@@ -3070,124 +3025,49 @@ export default function Tesoreria() {
 
       <Panel
         abierto={panel === 'movimiento'}
-        titulo="Otros movimientos de cuenta"
+        titulo="Comisión o ajuste de cuenta"
         onCerrar={cerrarPanel}
       >
         <p className="texto-ayuda">
-          Dinero que entra o sale de una cuenta y que no es un gasto del condominio ni el pago de una
-          unidad: comisiones y débitos del banco, intereses, otros ingresos, ajustes de caja y
-          traslados entre sus cuentas.
+          Para movimientos que no son gastos operativos: comisiones bancarias, ajustes de
+          arqueo o intereses.
         </p>
 
         <form onSubmit={guardarMovimiento}>
-          {/* P05_TIPO_MOVIMIENTO: primero la dirección del dinero, luego el tipo */}
           <div className="form-group">
-            <label>¿Qué pasó con el dinero? *</label>
-            <div className="opciones-moneda">
-              {[
-                { id: 'entra', titulo: 'Entró dinero', sub: 'Suma al saldo', kind: 'otro_ingreso' },
-                { id: 'sale', titulo: 'Salió dinero', sub: 'Resta del saldo', kind: 'comision_bancaria' },
-                { id: 'traslado', titulo: 'Traslado', sub: 'Entre mis cuentas', kind: 'traslado' },
-              ].map((op) => {
-                const actual =
-                  formMovimiento.kind === 'traslado'
-                    ? 'traslado'
-                    : (SIGNO_MOV[formMovimiento.kind] || 1) > 0
-                    ? 'entra'
-                    : 'sale'
-                return (
-                  <button
-                    key={op.id}
-                    type="button"
-                    className={`opcion-moneda ${actual === op.id ? 'activa' : ''}`}
-                    onClick={() =>
-                      actual !== op.id &&
-                      setFormMovimiento({ ...formMovimiento, kind: op.kind, destino_id: '' })
-                    }
-                  >
-                    <strong>{op.titulo}</strong>
-                    <small>{op.sub}</small>
-                  </button>
-                )
-              })}
-            </div>
+            <label>Cuenta *</label>
+            <select
+              className="form-control"
+              value={formMovimiento.account_id}
+              onChange={(e) => setFormMovimiento({ ...formMovimiento, account_id: e.target.value })}
+            >
+              <option value="">Seleccione…</option>
+              {cuentas
+                .filter((c) => c.is_active)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {fmtMoneda(c.current_balance, c.currency)}
+                  </option>
+                ))}
+            </select>
           </div>
 
-          {formMovimiento.kind !== 'traslado' && (
-            <div className="form-group">
-              <label>
-                {(SIGNO_MOV[formMovimiento.kind] || 1) > 0 ? 'Tipo de ingreso *' : 'Tipo de egreso *'}
-              </label>
-              <select
-                className="form-control"
-                value={formMovimiento.kind}
-                onChange={(e) => setFormMovimiento({ ...formMovimiento, kind: e.target.value })}
-              >
-                {(SIGNO_MOV[formMovimiento.kind] || 1) > 0 ? (
-                  <>
-                    <option value="otro_ingreso">Otro ingreso</option>
-                    <option value="interes_ganado">Intereses ganados</option>
-                    <option value="ajuste_positivo">Ajuste de caja · sobrante</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="comision_bancaria">Comisión bancaria</option>
-                    <option value="debito_bancario">Débito bancario (cargo o impuesto del banco)</option>
-                    <option value="otro_egreso">Otro egreso</option>
-                    <option value="ajuste_negativo">Ajuste de caja · faltante</option>
-                  </>
-                )}
-              </select>
-            </div>
-          )}
-
-          <div className="grid-form">
-            <div className="form-group">
-              <label>{formMovimiento.kind === 'traslado' ? 'Cuenta de origen *' : 'Cuenta *'}</label>
-              <select
-                className="form-control"
-                value={formMovimiento.account_id}
-                onChange={(e) =>
-                  setFormMovimiento({
-                    ...formMovimiento,
-                    account_id: e.target.value,
-                    destino_id:
-                      formMovimiento.destino_id === e.target.value ? '' : formMovimiento.destino_id,
-                  })
-                }
-              >
-                <option value="">Seleccione…</option>
-                {cuentas
-                  .filter((c) => c.is_active)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} · {fmtMoneda(c.current_balance, c.currency)}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            {formMovimiento.kind === 'traslado' && (
-              <div className="form-group">
-                <label>Cuenta de destino *</label>
-                <select
-                  className="form-control"
-                  value={formMovimiento.destino_id}
-                  onChange={(e) =>
-                    setFormMovimiento({ ...formMovimiento, destino_id: e.target.value })
-                  }
-                >
-                  <option value="">Seleccione…</option>
-                  {cuentas
-                    .filter((c) => c.is_active && c.id !== formMovimiento.account_id)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} · {fmtMoneda(c.current_balance, c.currency)}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            )}
+          <div className="form-group">
+            <label>
+              Tipo de movimiento *
+              <IconoAyuda texto="Comisiones bancarias o ajustes de arqueo. No use esto para registrar los gastos operativos regulares del condominio." />
+            </label>
+            <select
+              className="form-control"
+              value={formMovimiento.kind}
+              onChange={(e) => setFormMovimiento({ ...formMovimiento, kind: e.target.value })}
+            >
+              <option value="comision_bancaria">Comisión bancaria (resta)</option>
+              <option value="ajuste_negativo">Ajuste de arqueo · faltante (resta)</option>
+              <option value="ajuste_positivo">Ajuste de arqueo · sobrante (suma)</option>
+              <option value="interes_ganado">Intereses ganados (suma)</option>
+              <option value="otro">Otro (suma)</option>
+            </select>
           </div>
 
           <div className="grid-form">
@@ -3199,7 +3079,7 @@ export default function Tesoreria() {
                 onChange={(e) =>
                   setFormMovimiento({ ...formMovimiento, description: e.target.value })
                 }
-                placeholder={EJEMPLO_MOV[formMovimiento.kind] || ''}
+                placeholder="Mantenimiento de cuenta"
               />
             </div>
 
@@ -3209,7 +3089,7 @@ export default function Tesoreria() {
                 {formMovimiento.account_id
                   ? `(${cuentas.find((c) => c.id === formMovimiento.account_id)?.currency || ''}) *`
                   : '*'}
-                <IconoAyuda texto="Siempre positivo y en la moneda de la cuenta elegida. El tipo de movimiento define si suma o resta." />
+                <IconoAyuda texto="El monto va en la MONEDA DE LA CUENTA elegida (una cuenta en bolívares espera bolívares; una en dólares espera dólares). Siempre positivo: el 'Tipo de movimiento' define si suma o resta." />
               </label>
               <input
                 type="number"
@@ -3231,70 +3111,12 @@ export default function Tesoreria() {
             </div>
           </div>
 
-          {(() => {
-            const origen = cuentas.find((c) => c.id === formMovimiento.account_id)
-            const monto = Number(formMovimiento.amount) || 0
-            if (!origen || !monto) return null
-            const signo = SIGNO_MOV[formMovimiento.kind] || 1
-            const queda = Number(origen.current_balance || 0) + signo * monto
-            const destino = cuentas.find((c) => c.id === formMovimiento.destino_id)
-            const tasa = Number(tasaHoy?.tasa) || 0
-            let entra = null
-            if (formMovimiento.kind === 'traslado' && destino) {
-              entra =
-                destino.currency === origen.currency
-                  ? monto
-                  : tasa
-                  ? origen.currency === 'USD'
-                    ? monto * tasa
-                    : monto / tasa
-                  : null
-            }
-            return (
-              <div
-                style={{
-                  background: queda < 0 ? '#b91c1c' : '#1e3a8a',
-                  color: '#fff',
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  margin: '4px 0 12px',
-                  fontSize: '0.9rem',
-                  lineHeight: 1.45,
-                }}
-              >
-                <div>
-                  El saldo de <strong>{origen.name}</strong> quedará en{' '}
-                  <strong>{fmtMoneda(queda, origen.currency)}</strong>
-                </div>
-                {queda < 0 && <div>Fondos insuficientes: la cuenta no tiene ese monto disponible.</div>}
-                {formMovimiento.kind === 'traslado' && destino && (
-                  <div>
-                    Entrarán{' '}
-                    {entra != null ? <strong>≈ {fmtMoneda(entra, destino.currency)}</strong> : 'el equivalente'}{' '}
-                    a <strong>{destino.name}</strong>
-                    {destino.currency !== origen.currency ? ' (tasa BCV de la fecha del traslado)' : ''}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-
-          {faltanMovimiento().length > 0 && (
-            <small className="texto-ayuda bloque" style={{ marginBottom: 8 }}>
-              Para guardar falta: {faltanMovimiento().join(', ')}.
-            </small>
-          )}
-
           <div className="panel-acciones">
             <button type="button" className="btn btn-secundario" onClick={cerrarPanel}>
               Cancelar
             </button>
             <button className="btn btn-primary" disabled={enviando}>
-              {enviando
-                ? 'Registrando…'
-                : formMovimiento.kind === 'traslado'
-                ? 'Registrar traslado'
-                : 'Registrar movimiento'}
+              {enviando ? 'Registrando…' : 'Registrar movimiento'}
             </button>
           </div>
         </form>
