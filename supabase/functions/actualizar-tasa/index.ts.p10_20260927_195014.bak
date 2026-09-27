@@ -117,28 +117,6 @@ async function fuenteSecundaria(): Promise<Tasas | null> {
   }
 }
 
-/** P10_EURO: tasa oficial BCV del euro. Si falla, no afecta la del dólar. */
-async function fuenteEuro(): Promise<number | null> {
-  try {
-    const res = await pedirConLimite('https://ve.dolarapi.com/v1/euros/oficial')
-    if (!res.ok) {
-      console.log('DolarApi /euros/oficial devolvió', res.status)
-      return null
-    }
-    const datos: EntradaDolarApi = await res.json()
-    return tasaValida(datos?.promedio) ? datos.promedio : null
-  } catch (err) {
-    console.error('DolarApi /euros/oficial falló:', (err as Error).message)
-    return null
-  }
-}
-
-/** P10_EURO: fecha de HOY en Venezuela (UTC-4). Con la fecha UTC, después de
- *  las 8 PM la tasa quedaba registrada con la fecha de mañana. */
-function hoyVenezuela(): string {
-  return new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString().split('T')[0]
-}
-
 /**
  * Notifica a los administradores que la tasa del día no se pudo obtener.
  * Se llama solo cuando el último intento del día falla, o en el
@@ -188,7 +166,7 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    const hoy = hoyVenezuela()
+    const hoy = new Date().toISOString().split('T')[0]
 
     // Parámetros opcionales del cron: qué intento es y si es el último
     // del día. Permite reintentos escalonados (4, 5, 6 AM) que solo
@@ -210,20 +188,12 @@ Deno.serve(async (req) => {
     // solo verifica y notifica.)
     const { data: yaHoy } = await admin
       .from('exchange_rates')
-      .select('rate_date, status, rate_eur')
+      .select('rate_date, status')
       .eq('rate_date', hoy)
       .in('status', ['active', 'fallback'])
       .maybeSingle()
 
     if (yaHoy && !esRecordatorio) {
-      // P10_EURO: si el dólar ya estaba pero falta el euro, se completa.
-      if (yaHoy.rate_eur == null) {
-        const euro = await fuenteEuro()
-        if (euro) {
-          await admin.from('exchange_rates').update({ rate_eur: euro }).eq('rate_date', hoy)
-          return json({ ok: true, ya_existia: true, fecha: hoy, tasa_euro: euro, mensaje: `Se completó el euro: 1 EUR = ${euro} Bs.` })
-        }
-      }
       return json({ ok: true, ya_existia: true, fecha: hoy, mensaje: 'La tasa de hoy ya estaba registrada.' })
     }
 
@@ -292,7 +262,7 @@ Deno.serve(async (req) => {
     const { data: anterior } = await admin
       .from('exchange_rates')
       .select('rate_bcv, rate_date')
-      .lt('rate_date', hoy)
+      .lt('rate_date', new Date().toISOString().split('T')[0])
       .order('rate_date', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -317,15 +287,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    const euro = await fuenteEuro()
-
     const { data, error } = await admin
       .from('exchange_rates')
       .upsert(
         {
           rate_date: hoy,
           rate_bcv: tasas.bcv,
-          ...(euro ? { rate_eur: euro } : {}),
           rate_parallel: tasas.paralela ?? null,
           source: origen,
           status: estado,
@@ -347,10 +314,10 @@ Deno.serve(async (req) => {
       ok: true,
       fecha: hoy,
       tasa_bcv: tasas.bcv,
-      tasa_euro: euro,
+      tasa_paralela: tasas.paralela ?? null,
       origen,
       estado,
-      mensaje: `1 USD = ${tasas.bcv} Bs.` + (euro ? ` · 1 EUR = ${euro} Bs.` : ''),
+      mensaje: `1 USD = ${tasas.bcv} Bs.`,
     })
   } catch (err) {
     console.error('Error no controlado:', err)
