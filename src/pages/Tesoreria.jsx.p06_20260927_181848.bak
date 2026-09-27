@@ -2932,29 +2932,11 @@ export default function Tesoreria() {
                       min="0"
                       className="form-control"
                       value={pagoEmpleado.amount}
-                      onChange={(e) => {
-                        // P06_BS_A_USD: si se paga otro monto en Bs., el valor en USD
-                        // se recalcula con la tasa para que el gasto quede exacto.
-                        const bs = e.target.value
-                        const t = Number(pagoEmpleado.tasa_manual) || Number(tasaHoy?.tasa) || 0
-                        setPagoEmpleado({
-                          ...pagoEmpleado,
-                          amount: bs,
-                          amount_usd: t && Number(bs) ? (Number(bs) / t).toFixed(2) : pagoEmpleado.amount_usd,
-                        })
-                      }}
+                      onChange={(e) =>
+                        setPagoEmpleado({ ...pagoEmpleado, amount: e.target.value })
+                      }
                       placeholder="0.00"
                     />
-                    {Number(pagoEmpleado.amount) > 0 &&
-                      (Number(pagoEmpleado.tasa_manual) || Number(tasaHoy?.tasa)) > 0 && (
-                        <small className="texto-ayuda bloque">
-                          Se registrará como gasto de{' '}
-                          {fmtUSD(
-                            Number(pagoEmpleado.amount) /
-                              (Number(pagoEmpleado.tasa_manual) || Number(tasaHoy?.tasa))
-                          )}
-                        </small>
-                      )}
                   </div>
                 </div>
                 
