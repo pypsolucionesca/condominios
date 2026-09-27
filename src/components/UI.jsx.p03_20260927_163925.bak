@@ -1,113 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { comprimirImagen, formatearTamano } from '../lib/imagenes'
 import { filtrarSugerencias } from '../lib/formato'
 
-/**
- * Panel lateral para formularios. Evita perder el listado de fondo.
- * P03_PANEL_SEGURO:
- *  - Solo se cierra por el fondo si el clic EMPIEZA y TERMINA en el fondo
- *    (antes, arrastrar al seleccionar texto o tocar la barra de desplazamiento lo cerraba).
- *  - Si ya se escribió algo, Esc / × / clic fuera preguntan antes de descartar.
- *  - proteger={false} para paneles de solo consulta.
- */
-export function Panel({ abierto, titulo, onCerrar, children, ancho = 480, proteger = true }) {
-  const [sucio, setSucio] = useState(false)
-  const [preguntando, setPreguntando] = useState(false)
-  const pulsoEnFondo = useRef(false)
-
-  useEffect(() => {
-    if (abierto) {
-      setSucio(false)
-      setPreguntando(false)
-    }
-  }, [abierto])
-
-  const intentarCerrar = useCallback(() => {
-    if (proteger && sucio) setPreguntando(true)
-    else onCerrar()
-  }, [proteger, sucio, onCerrar])
-
+/** Panel lateral para formularios. Evita perder el listado de fondo. */
+export function Panel({ abierto, titulo, onCerrar, children, ancho = 480 }) {
   useEffect(() => {
     if (!abierto) return
-    const esc = (e) => {
-      if (e.key !== 'Escape') return
-      if (preguntando) setPreguntando(false)
-      else intentarCerrar()
-    }
+    const esc = (e) => e.key === 'Escape' && onCerrar()
     document.addEventListener('keydown', esc)
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', esc)
       document.body.style.overflow = ''
     }
-  }, [abierto, intentarCerrar, preguntando])
-
-  // Si hay datos sin guardar, el navegador avisa antes de recargar o cerrar la pestaña.
-  useEffect(() => {
-    if (!abierto || !proteger || !sucio) return
-    const antes = (e) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', antes)
-    return () => window.removeEventListener('beforeunload', antes)
-  }, [abierto, proteger, sucio])
+  }, [abierto, onCerrar])
 
   if (!abierto) return null
 
   return (
-    <div
-      className="panel-fondo"
-      onMouseDown={(e) => {
-        pulsoEnFondo.current = e.target === e.currentTarget
-      }}
-      onClick={(e) => {
-        const cerrar = pulsoEnFondo.current && e.target === e.currentTarget
-        pulsoEnFondo.current = false
-        if (cerrar) intentarCerrar()
-      }}
-    >
+    <div className="panel-fondo" onClick={onCerrar}>
       <div
         className="panel-lateral"
         style={{ maxWidth: ancho }}
         onClick={(e) => e.stopPropagation()}
-        onInput={() => {
-          if (!sucio) setSucio(true)
-        }}
         role="dialog"
         aria-modal="true"
       >
         <div className="panel-cabecera">
           <h3>{titulo}</h3>
-          <button className="panel-cerrar" onClick={intentarCerrar} aria-label="Cerrar">
+          <button className="panel-cerrar" onClick={onCerrar} aria-label="Cerrar">
             ×
           </button>
         </div>
         <div className="panel-cuerpo">{children}</div>
       </div>
-
-      {preguntando && (
-        <div className="panel-fondo" onClick={(e) => e.stopPropagation()}>
-          <div className="dialogo" role="alertdialog">
-            <h3>Hay datos sin guardar</h3>
-            <p>Si cierra ahora, se pierde lo que escribió en este formulario.</p>
-            <div className="dialogo-botones">
-              <button className="btn btn-primary" onClick={() => setPreguntando(false)}>
-                Seguir editando
-              </button>
-              <button
-                className="btn btn-danger"
-                onClick={() => {
-                  setPreguntando(false)
-                  onCerrar()
-                }}
-              >
-                Descartar y cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

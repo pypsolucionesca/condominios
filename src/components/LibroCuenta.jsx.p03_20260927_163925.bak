@@ -78,7 +78,6 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
       titulo={cuenta ? `Movimientos · ${cuenta.nombre}` : 'Movimientos'}
       onCerrar={onCerrar}
       ancho={760}
-      proteger={false} // P03_PANEL_SEGURO: solo consulta
     >
       {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
 
@@ -142,7 +141,7 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
             </div>
             <div>
               <small>Saldo final</small>
-              <strong>{fmtMoneda(datos.saldo_final ?? cuenta.saldo_actual, moneda)}</strong>
+              <strong>{fmtMoneda(cuenta.saldo_actual, moneda)}</strong>
             </div>
           </div>
 

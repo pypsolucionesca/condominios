@@ -66,7 +66,7 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
   // reciente (orden en que se calcula el saldo acumulado). 'desc' los muestra
   // con el más reciente arriba, sin recalcular saldos: cada fila conserva el
   // saldo que ya trae, solo cambia el orden de presentación.
-  const [ordenDesc, setOrdenDesc] = useState(true) // P02_LIBRO_RECIENTE: lo mas reciente arriba
+  const [ordenDesc, setOrdenDesc] = useState(false)
   const movimientosOrdenados = useMemo(
     () => (ordenDesc ? [...movimientos].reverse() : movimientos),
     [movimientos, ordenDesc]
@@ -78,7 +78,6 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
       titulo={cuenta ? `Movimientos · ${cuenta.nombre}` : 'Movimientos'}
       onCerrar={onCerrar}
       ancho={760}
-      proteger={false} // P03_PANEL_SEGURO: solo consulta
     >
       {error && <Aviso tipo="error" onCerrar={() => setError(null)}>{error}</Aviso>}
 
@@ -142,7 +141,7 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
             </div>
             <div>
               <small>Saldo final</small>
-              <strong>{fmtMoneda(datos.saldo_final ?? cuenta.saldo_actual, moneda)}</strong>
+              <strong>{fmtMoneda(cuenta.saldo_actual, moneda)}</strong>
             </div>
           </div>
 
@@ -158,7 +157,7 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
             />
           ) : (
             <>
-              {!ordenDesc && Number(cuenta.apertura) !== 0 && !desde && (
+              {Number(cuenta.apertura) !== 0 && !desde && (
                 <div className="mov-apertura">
                   <span>Saldo de apertura de la cuenta</span>
                   <strong>{fmtMoneda(cuenta.apertura, moneda)}</strong>
@@ -222,13 +221,6 @@ export default function LibroCuenta({ cuentaId, abierto, onCerrar }) {
                   </tbody>
                 </table>
               </div>
-
-              {ordenDesc && Number(cuenta.apertura) !== 0 && !desde && (
-                <div className="mov-apertura" style={{ marginTop: 8 }}>
-                  <span>Saldo de apertura de la cuenta</span>
-                  <strong>{fmtMoneda(cuenta.apertura, moneda)}</strong>
-                </div>
-              )}
 
               <p className="texto-ayuda" style={{ marginTop: 12 }}>
                 El saldo de cada línea permite conciliar contra el estado de cuenta del banco:

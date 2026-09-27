@@ -26,7 +26,6 @@ export default function MiCuenta() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
   const [busqueda, setBusqueda] = useState('')
-  const [ordenDesc, setOrdenDesc] = useState(true) // P01_ORDEN_RECIENTE: lo mas reciente arriba
   
   // Estados para la información global (Cuentas y Tasa)
   const [cuentas, setCuentas] = useState([])
@@ -182,13 +181,11 @@ export default function MiCuenta() {
 
   const movimientosVisibles = useMemo(() => {
     const q = normalizar(busqueda)
-    const lista = movimientos.filter(m => {
+    return movimientos.filter(m => {
       if (!q) return true
       return normalizar(m.description).includes(q) || normalizar(fmtUSD(m.running_balance)).includes(q)
     })
-    // La BD entrega en orden cronologico (el saldo corrido depende de eso); solo se invierte la vista.
-    return ordenDesc ? [...lista].reverse() : lista
-  }, [movimientos, busqueda, ordenDesc])
+  }, [movimientos, busqueda])
 
   if (!unidades.length) {
     return (
@@ -383,7 +380,7 @@ export default function MiCuenta() {
                 <table className="tabla">
                   <thead>
                     <tr>
-                      <th className="th-ordenable" onClick={() => setOrdenDesc(v => !v)} title={ordenDesc ? 'Mostrando lo más reciente primero. Toque para ver lo más antiguo primero' : 'Mostrando lo más antiguo primero. Toque para ver lo más reciente primero'} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>Fecha {ordenDesc ? '▼' : '▲'}</th>
+                      <th>Fecha</th>
                       <th>Concepto</th>
                       <th className="der">Cargo</th>
                       <th className="der">Abono</th>
